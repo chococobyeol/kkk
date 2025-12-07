@@ -671,6 +671,13 @@ function displayResults(results) {
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
         
+        const leftSection = document.createElement('div');
+        leftSection.className = 'result-left';
+        leftSection.style.display = 'flex';
+        leftSection.style.alignItems = 'center';
+        leftSection.style.gap = '8px';
+        leftSection.style.flexWrap = 'wrap';
+        
         const categorySpan = document.createElement('span');
         categorySpan.className = 'result-category';
         categorySpan.textContent = `[${item.t}]`;
@@ -678,12 +685,37 @@ function displayResults(results) {
         const nameSpan = document.createElement('span');
         nameSpan.className = 'result-name';
         nameSpan.textContent = item.n;
-        nameSpan.addEventListener('click', () => {
+        
+        leftSection.appendChild(categorySpan);
+        leftSection.appendChild(nameSpan);
+        
+        // 태그가 있으면 표시
+        if (item.tags && item.tags.length > 0) {
+            const tagsContainer = document.createElement('div');
+            tagsContainer.className = 'result-tags';
+            tagsContainer.style.display = 'flex';
+            tagsContainer.style.gap = '6px';
+            tagsContainer.style.flexWrap = 'wrap';
+            tagsContainer.style.marginLeft = 'auto';
+            
+            item.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'result-tag';
+                tagSpan.textContent = tag;
+                tagsContainer.appendChild(tagSpan);
+            });
+            
+            resultItem.appendChild(leftSection);
+            resultItem.appendChild(tagsContainer);
+        } else {
+            resultItem.appendChild(leftSection);
+        }
+        
+        // 전체 항목 클릭 시 복사
+        resultItem.addEventListener('click', () => {
             copyToClipboard(item.n);
         });
         
-        resultItem.appendChild(categorySpan);
-        resultItem.appendChild(nameSpan);
         resultsList.appendChild(resultItem);
     });
 }
