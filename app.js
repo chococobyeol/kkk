@@ -281,6 +281,24 @@ function setupEventListeners() {
             performSearch(choseongInput.value);
         }
     });
+
+    // 메뉴 버튼 토글
+    const menuBtn = document.getElementById('menuBtn');
+    const menuDropdown = document.getElementById('menuDropdown');
+    
+    if (menuBtn && menuDropdown) {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menuDropdown.classList.toggle('active');
+        });
+
+        // 메뉴 외부 클릭 시 닫기
+        document.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
+                menuDropdown.classList.remove('active');
+            }
+        });
+    }
 }
 
 // 초성 변환 함수
