@@ -7,7 +7,12 @@ let searchStartTime = null;
 let searchTimer = null;
 let categories = new Set();
 let selectedCategory = 'all';
+let selectedTags = []; // 선택된 태그 배열
+let availableTags = new Set(); // 현재 카테고리의 사용 가능한 태그
 let debounceTimer = null;
+
+// 성능 설정
+const MAX_RESULTS = 500; // 최대 검색 결과 수
 
 // 초성 리스트
 const CHOSEONG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
@@ -17,6 +22,7 @@ const choseongInput = document.getElementById('choseongInput');
 const resultsList = document.getElementById('resultsList');
 const resultsCount = document.getElementById('resultsCount');
 const categoryFilter = document.getElementById('categoryFilter');
+const tagFilterContainer = document.getElementById('tagFilterContainer');
 const historyList = document.getElementById('historyList');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const clearInputBtn = document.getElementById('clearInputBtn');
@@ -227,6 +233,8 @@ function setupEventListeners() {
     // 카테고리 필터
     categoryFilter.addEventListener('change', (e) => {
         selectedCategory = e.target.value;
+        selectedTags = []; // 카테고리 변경 시 태그 초기화
+        updateTagFilter();
         performSearch(choseongInput.value);
     });
 
@@ -316,12 +324,20 @@ async function loadData() {
             const parts = parseCSVLine(line);
             if (parts.length >= 2) {
                 const category = parts[0].trim();
-                const name = parts[1].trim();
+                // 태그 컬럼 처리 (B열, 선택사항)
+                let tags = [];
+                if (parts.length >= 3 && parts[1].trim()) {
+                    // 태그가 있으면 쉼표로 분리
+                    tags = parts[1].trim().split(',').map(tag => tag.trim()).filter(tag => tag);
+                }
+                // 이름은 마지막 컬럼 또는 B열(태그가 없는 경우)
+                const name = (parts.length >= 3 ? parts[2] : parts[1]).trim();
                 
                 if (category && name) {
                     const choseong = getChoseong(name);
                     database.push({
                         t: category,
+                        tags: tags,
                         n: name,
                         c: choseong
                     });
@@ -331,6 +347,7 @@ async function loadData() {
         });
         
         updateCategoryFilter();
+        updateTagFilter();
         performSearch(choseongInput.value);
         showNotification('데이터 로딩 완료!', 'success');
         
@@ -377,6 +394,140 @@ function updateCategoryFilter() {
         option.textContent = category;
         categoryFilter.appendChild(option);
     });
+}
+
+// 태그 필터 업데이트 (카테고리 선택 시)
+function updateTagFilter() {
+    if (!tagFilterContainer) return;
+    
+    // 태그 컨테이너 초기화
+    tagFilterContainer.innerHTML = '';
+    
+    if (selectedCategory === 'all') {
+        // 전체 선택 시 태그 필터 숨김
+        tagFilterContainer.style.display = 'none';
+        selectedTags = [];
+        return;
+    }
+    
+    // 해당 카테고리의 태그 수집
+    availableTags.clear();
+    const tagCounts = {}; // 태그별 아이템 개수
+    
+    database.forEach(item => {
+        if (item.t === selectedCategory && item.tags && item.tags.length > 0) {
+            item.tags.forEach(tag => {
+                availableTags.add(tag);
+                tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+            });
+        }
+    });
+    
+    if (availableTags.size === 0) {
+        // 태그가 없으면 태그 필터 숨김
+        tagFilterContainer.style.display = 'none';
+        selectedTags = [];
+        return;
+    }
+    
+    // 태그 필터 표시
+    tagFilterContainer.style.display = 'block';
+    
+    const tagLabel = document.createElement('label');
+    tagLabel.textContent = '태그:';
+    tagLabel.style.fontSize = '15px';
+    tagLabel.style.fontWeight = '500';
+    tagLabel.style.marginRight = '12px';
+    tagLabel.style.color = '#212529';
+    tagFilterContainer.appendChild(tagLabel);
+    
+    const tagList = document.createElement('div');
+    tagList.className = 'tag-list';
+    tagList.style.display = 'flex';
+    tagList.style.flexWrap = 'wrap';
+    tagList.style.gap = '8px';
+    tagList.style.marginTop = '8px';
+    
+    // 태그를 개수 순으로 정렬 (많은 순)
+    const sortedTags = Array.from(availableTags).sort((a, b) => {
+        return (tagCounts[b] || 0) - (tagCounts[a] || 0);
+    });
+    
+    // "전체" 옵션 추가
+    const allTagCheckbox = document.createElement('input');
+    allTagCheckbox.type = 'checkbox';
+    allTagCheckbox.id = 'tag-all';
+    allTagCheckbox.checked = selectedTags.length === 0;
+    allTagCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            selectedTags = [];
+            // 다른 체크박스 모두 해제
+            tagList.querySelectorAll('input[type="checkbox"]:not(#tag-all)').forEach(cb => {
+                cb.checked = false;
+            });
+        }
+        performSearch(choseongInput.value);
+    });
+    
+    const allTagLabel = document.createElement('label');
+    allTagLabel.htmlFor = 'tag-all';
+    allTagLabel.textContent = '전체';
+    allTagLabel.className = 'tag-item';
+    allTagLabel.style.cursor = 'pointer';
+    allTagLabel.style.fontSize = '14px';
+    allTagLabel.style.color = '#212529';
+    
+    const allTagWrapper = document.createElement('div');
+    allTagWrapper.style.display = 'flex';
+    allTagWrapper.style.alignItems = 'center';
+    allTagWrapper.style.gap = '6px';
+    allTagWrapper.appendChild(allTagCheckbox);
+    allTagWrapper.appendChild(allTagLabel);
+    tagList.appendChild(allTagWrapper);
+    
+    // 각 태그 체크박스 생성
+    sortedTags.forEach(tag => {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `tag-${tag}`;
+        checkbox.value = tag;
+        checkbox.checked = selectedTags.includes(tag);
+        checkbox.addEventListener('change', (e) => {
+            // "전체" 체크박스 해제
+            allTagCheckbox.checked = false;
+            
+            if (e.target.checked) {
+                selectedTags.push(tag);
+            } else {
+                selectedTags = selectedTags.filter(t => t !== tag);
+            }
+            
+            // 태그가 모두 해제되면 "전체" 자동 선택
+            if (selectedTags.length === 0) {
+                allTagCheckbox.checked = true;
+            }
+            
+            performSearch(choseongInput.value);
+        });
+        
+        const label = document.createElement('label');
+        label.htmlFor = `tag-${tag}`;
+        label.textContent = `${tag} (${tagCounts[tag]})`;
+        label.className = 'tag-item';
+        label.style.cursor = 'pointer';
+        label.style.fontSize = '14px';
+        label.style.color = '#212529';
+        
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'flex';
+        wrapper.style.alignItems = 'center';
+        wrapper.style.gap = '6px';
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(label);
+        tagList.appendChild(wrapper);
+    });
+    
+    tagFilterContainer.appendChild(tagList);
 }
 
 // 검색 수행
@@ -439,21 +590,69 @@ function performSearch(query) {
         searchTimer = null;
     }, 1500);
     
-    // 검색 수행
-    let results = database.filter(item => {
-        return item.c.includes(searchQuery);
-    });
+    // 검색 수행 - 성능 최적화: 필터링 순서 조정
+    let results = database;
     
-    // 카테고리 필터링
+    // 1단계: 카테고리 필터링 (검색 대상 축소)
     if (selectedCategory !== 'all') {
         results = results.filter(item => item.t === selectedCategory);
+    }
+    
+    // 2단계: 태그 필터링 (검색 대상 추가 축소)
+    if (selectedTags.length > 0) {
+        results = results.filter(item => {
+            // 태그가 없는 아이템은 제외
+            if (!item.tags || item.tags.length === 0) {
+                return false;
+            }
+            // 선택한 태그 중 하나라도 포함되어 있으면 포함
+            return selectedTags.some(tag => item.tags.includes(tag));
+        });
+    }
+    
+    // 3단계: 초성 검색 (가장 비용이 큰 작업을 마지막에)
+    if (searchQuery) {
+        results = results.filter(item => {
+            return item.c.includes(searchQuery);
+        });
+    }
+    
+    // 4단계: 검색 결과 제한 (성능 보호)
+    if (results.length > MAX_RESULTS) {
+        results = results.slice(0, MAX_RESULTS);
     }
     
     displayResults(results);
     
     // 결과 개수 표시
     if (results.length > 0) {
-        resultsCount.textContent = `총 ${results.length}개 결과`;
+        const displayCount = results.length;
+        // 실제 총 결과 수 계산 (제한 전)
+        let totalCount = displayCount;
+        if (displayCount >= MAX_RESULTS) {
+            // 제한된 경우 실제 개수를 다시 계산
+            let tempResults = database;
+            if (selectedCategory !== 'all') {
+                tempResults = tempResults.filter(item => item.t === selectedCategory);
+            }
+            if (selectedTags.length > 0) {
+                tempResults = tempResults.filter(item => {
+                    if (!item.tags || item.tags.length === 0) return false;
+                    return selectedTags.some(tag => item.tags.includes(tag));
+                });
+            }
+            if (searchQuery) {
+                totalCount = tempResults.filter(item => item.c.includes(searchQuery)).length;
+            } else {
+                totalCount = tempResults.length;
+            }
+        }
+        
+        if (totalCount > MAX_RESULTS) {
+            resultsCount.textContent = `총 ${totalCount}개 중 ${displayCount}개 표시 (최대 ${MAX_RESULTS}개)`;
+        } else {
+            resultsCount.textContent = `총 ${displayCount}개 결과`;
+        }
     } else {
         resultsCount.textContent = '';
     }
@@ -616,7 +815,8 @@ function autoSetCategory() {
     
     // 우선순위 2: 최근 검색 결과의 카테고리
     if (currentSearch) {
-        const recentResults = database.filter(item => item.c.includes(currentSearch));
+        // 성능 최적화: 검색 결과 제한
+        const recentResults = database.filter(item => item.c.includes(currentSearch)).slice(0, 100);
         if (recentResults.length > 0) {
             const categoryCounts = {};
             recentResults.forEach(item => {

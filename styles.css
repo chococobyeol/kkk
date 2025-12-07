@@ -206,6 +206,42 @@ section {
     font-weight: 500;
 }
 
+/* 태그 필터 영역 */
+.tag-filter-container {
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.tag-filter-container label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #212529;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.tag-item {
+    font-size: 14px;
+    color: #212529;
+    user-select: none;
+}
+
+.tag-list input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: #0d6efd;
+}
+
 .results-list {
     min-height: 200px;
     max-height: 500px;
