@@ -330,6 +330,7 @@ section {
     padding: 60px 20px;
     color: #999;
     font-size: 16px;
+    line-height: 1.6;
 }
 
 .register-btn {
@@ -354,6 +355,24 @@ section {
 
 .register-btn:active {
     transform: translateY(0);
+}
+
+/* 정답 등록 영역 */
+.register-section {
+    margin-bottom: 24px;
+    padding: 24px;
+    background-color: #fff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e9ecef;
+    text-align: center;
+}
+
+.register-hint {
+    font-size: 15px;
+    color: #6c757d;
+    margin-bottom: 16px;
+    line-height: 1.5;
 }
 
 /* 검색 히스토리 영역 */
