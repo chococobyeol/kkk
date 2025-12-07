@@ -673,10 +673,6 @@ function displayResults(results) {
         
         const leftSection = document.createElement('div');
         leftSection.className = 'result-left';
-        leftSection.style.display = 'flex';
-        leftSection.style.alignItems = 'center';
-        leftSection.style.gap = '8px';
-        leftSection.style.flexWrap = 'wrap';
         
         const categorySpan = document.createElement('span');
         categorySpan.className = 'result-category';
@@ -693,10 +689,6 @@ function displayResults(results) {
         if (item.tags && item.tags.length > 0) {
             const tagsContainer = document.createElement('div');
             tagsContainer.className = 'result-tags';
-            tagsContainer.style.display = 'flex';
-            tagsContainer.style.gap = '6px';
-            tagsContainer.style.flexWrap = 'wrap';
-            tagsContainer.style.marginLeft = 'auto';
             
             item.tags.forEach(tag => {
                 const tagSpan = document.createElement('span');

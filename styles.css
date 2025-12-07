@@ -265,6 +265,7 @@ section {
     align-items: center;
     background-color: #fff;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .result-item:hover {
@@ -289,11 +290,20 @@ section {
     font-size: 16px;
     font-weight: 500;
     color: #212529;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 .result-left {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .result-tags {
@@ -301,6 +311,8 @@ section {
     gap: 6px;
     flex-wrap: wrap;
     align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .result-tag {
@@ -719,7 +731,26 @@ section {
     }
 
     .result-name {
-        font-size: 16px;
+        font-size: 14px;
+    }
+    
+    .result-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .result-left {
+        width: 100%;
+    }
+    
+    .result-tags {
+        width: 100%;
+        margin-top: 4px;
+    }
+    
+    .result-category {
+        font-size: 12px;
     }
 }
 
