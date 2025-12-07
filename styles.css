@@ -9,55 +9,76 @@
 
 body {
     font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background-color: #f8f9fa;
-    color: #212529;
-    line-height: 1.5;
+    background-color: #fafafa;
+    background-image: 
+        linear-gradient(#e8e8e8 1px, transparent 1px),
+        linear-gradient(90deg, #e8e8e8 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: #1a1a1a;
+    line-height: 1.6;
     padding: 24px 16px;
     font-size: 16px;
     min-height: 100vh;
 }
 
+main {
+    padding: 0;
+}
+
 .container {
     max-width: 900px;
     margin: 0 auto;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    padding: 32px;
+    background-color: #fff;
 }
 
 header {
     text-align: center;
     margin-bottom: 32px;
-    padding: 32px 24px;
-    background-color: #fff;
-    border-radius: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e9ecef;
+    padding: 0;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+/* 둥근모꼴 폰트 (눈누 CDN) */
+@font-face {
+    font-family: 'RoundedFixedsys';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_six@1.2/DungGeunMo.woff') format('woff');
+    font-weight: normal;
+    font-display: swap;
 }
 
 header h1 {
-    font-size: 28px;
-    font-weight: 700;
+    font-size: 32px;
+    font-weight: normal;
     margin-bottom: 8px;
-    color: #212529;
-    letter-spacing: -0.5px;
+    color: #1a1a1a;
+    letter-spacing: 1px;
+    font-family: 'RoundedFixedsys', 'Courier New', 'Monaco', 'Menlo', monospace;
 }
 
 .subtitle {
-    font-size: 15px;
-    color: #6c757d;
+    font-size: 16px;
+    color: #666;
     font-weight: 400;
 }
 
 section {
-    margin-bottom: 24px;
-    padding: 24px;
-    background-color: #fff;
-    border-radius: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e9ecef;
+    margin-bottom: 32px;
+    padding: 0;
+}
+
+section:not(:last-child) {
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 32px;
 }
 
 /* 입력 영역 */
 .input-section {
     text-align: center;
+    padding: 0;
 }
 
 .input-wrapper {
@@ -77,20 +98,20 @@ section {
     font-family: 'Noto Sans KR', sans-serif;
     font-size: 17px;
     background-color: #fff;
-    color: #212529;
-    border: 1.5px solid #dee2e6;
-    border-radius: 12px;
+    color: #1a1a1a;
+    border: 1px solid #ddd;
+    border-radius: 8px;
     outline: none;
     transition: all 0.2s ease;
 }
 
 #choseongInput:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
+    border-color: #888;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
 #choseongInput::placeholder {
-    color: #adb5bd;
+    color: #999;
 }
 
 .clear-input-btn {
@@ -100,7 +121,7 @@ section {
     transform: translateY(-50%);
     background: none;
     border: none;
-    color: #6c757d;
+    color: #666;
     font-size: 24px;
     cursor: pointer;
     padding: 0;
@@ -122,7 +143,7 @@ section {
 
 .clear-input-btn:hover {
     background-color: #f0f0f0;
-    color: #212529;
+    color: #1a1a1a;
 }
 
 .clear-input-btn:active {
@@ -130,42 +151,75 @@ section {
 }
 
 .icon-btn {
-    padding: 16px 24px;
-    background-color: #0d6efd;
+    padding: 12px 24px;
+    background-color: #333;
     color: #fff;
     border: none;
-    border-radius: 12px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 15px;
     font-weight: 500;
     transition: all 0.2s ease;
     white-space: nowrap;
     min-width: 100px;
+    min-height: 44px;
 }
 
 .icon-btn:hover {
-    background-color: #0b5ed7;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+    background-color: #1a1a1a;
 }
 
 .icon-btn:active {
-    transform: translateY(0);
+    background-color: #000;
+}
+
+.refresh-btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background-color: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3Cpath d='M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16'/%3E%3Cpath d='M3 21v-5h5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 20px 20px;
+}
+
+.refresh-btn:hover {
+    background-color: #f5f5f5;
+    border-color: #999;
+}
+
+.refresh-btn:active {
+    background-color: #e5e5e5;
+    transform: rotate(180deg);
+    transition: transform 0.3s ease;
 }
 
 .hint {
     font-size: 14px;
-    color: #6c757d;
-    margin-top: 8px;
+    color: #666;
+    margin-top: 12px;
     text-align: center;
 }
 
 /* 검색 결과 영역 */
+.results-section {
+    padding: 0;
+}
+
 .results-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     flex-wrap: wrap;
     gap: 16px;
 }
@@ -179,7 +233,7 @@ section {
 .filter-wrapper label {
     font-size: 15px;
     font-weight: 500;
-    color: #212529;
+    color: #1a1a1a;
 }
 
 #categoryFilter {
@@ -187,37 +241,38 @@ section {
     font-family: 'Noto Sans KR', sans-serif;
     font-size: 15px;
     background-color: #fff;
-    color: #212529;
-    border: 1.5px solid #dee2e6;
-    border-radius: 10px;
+    color: #1a1a1a;
+    border: 1px solid #ddd;
+    border-radius: 8px;
     outline: none;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 #categoryFilter:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
+    border-color: #888;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
 .results-count {
     font-size: 15px;
-    color: #6c757d;
+    color: #666;
     font-weight: 500;
 }
 
 /* 태그 필터 영역 */
 .tag-filter-container {
-    padding: 12px;
-    background-color: #f8f9fa;
-    border-radius: 10px;
-    border: 1px solid #e9ecef;
+    padding: 16px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    margin-top: 12px;
+    margin-bottom: 16px;
 }
 
 .tag-filter-container label {
     font-size: 15px;
     font-weight: 500;
-    color: #212529;
+    color: #1a1a1a;
     display: inline-block;
     margin-right: 8px;
 }
@@ -231,7 +286,7 @@ section {
 
 .tag-item {
     font-size: 14px;
-    color: #212529;
+    color: #1a1a1a;
     user-select: none;
 }
 
@@ -239,25 +294,22 @@ section {
     cursor: pointer;
     width: 16px;
     height: 16px;
-    accent-color: #0d6efd;
+    accent-color: #666;
 }
 
 .results-list {
     min-height: 200px;
     max-height: 500px;
     overflow-y: auto;
-    border: 1.5px solid #e9ecef;
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 16px;
-    background-color: #f8f9fa;
+    padding: 0;
+    background-color: transparent;
 }
 
 .result-item {
-    padding: 14px 16px;
-    margin-bottom: 6px;
-    border: 1px solid #e9ecef;
-    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 8px;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
@@ -269,27 +321,25 @@ section {
 }
 
 .result-item:hover {
-    background-color: #f8f9ff;
-    border-color: #0d6efd;
-    transform: translateX(2px);
-    box-shadow: 0 2px 6px rgba(13, 110, 253, 0.12);
+    background-color: #f5f5f5;
+    border-color: #999;
 }
 
 .result-category {
     font-size: 13px;
-    color: #6c757d;
+    color: #666;
     margin-right: 12px;
     font-weight: 500;
     padding: 4px 10px;
-    background-color: #e9ecef;
-    border-radius: 8px;
+    background-color: #e5e5e5;
+    border-radius: 6px;
     white-space: nowrap;
 }
 
 .result-name {
     font-size: 16px;
     font-weight: 500;
-    color: #212529;
+    color: #1a1a1a;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -317,8 +367,8 @@ section {
 
 .result-tag {
     font-size: 12px;
-    color: #495057;
-    background-color: #f1f3f5;
+    color: #666;
+    background-color: #e5e5e5;
     padding: 3px 8px;
     border-radius: 6px;
     font-weight: 400;
@@ -334,59 +384,60 @@ section {
 }
 
 .register-btn {
-    width: 100%;
-    padding: 14px 20px;
+    display: inline-block;
+    padding: 12px 24px;
     font-family: 'Noto Sans KR', sans-serif;
     font-size: 15px;
     font-weight: 600;
-    background-color: #0d6efd;
+    background-color: #333;
     color: #fff;
     border: none;
-    border-radius: 12px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
+    min-height: 44px;
+    min-width: 120px;
 }
 
 .register-btn:hover {
-    background-color: #0b5ed7;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+    background-color: #1a1a1a;
 }
 
 .register-btn:active {
-    transform: translateY(0);
+    background-color: #000;
 }
 
 /* 정답 등록 영역 */
 .register-section {
-    margin-bottom: 24px;
-    padding: 24px;
-    background-color: #fff;
-    border-radius: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e9ecef;
     text-align: center;
+    padding: 0;
+    margin-bottom: 0;
+    border-bottom: none;
 }
 
 .register-hint {
-    font-size: 15px;
-    color: #6c757d;
+    font-size: 14px;
+    color: #666;
     margin-bottom: 16px;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 /* 검색 히스토리 영역 */
+.history-section {
+    padding: 0;
+}
+
 .history-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 }
 
 .history-header h2 {
     font-size: 18px;
     font-weight: 600;
-    color: #212529;
+    color: #1a1a1a;
 }
 
 .history-list {
@@ -396,9 +447,9 @@ section {
 }
 
 .history-item {
-    padding: 10px 14px;
-    border: 1px solid #e9ecef;
-    border-radius: 10px;
+    padding: 12px 16px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
     font-size: 15px;
@@ -407,13 +458,12 @@ section {
     gap: 10px;
     background-color: #fff;
     font-weight: 500;
+    min-height: 44px; /* 터치 고려 */
 }
 
 .history-item:hover {
-    background-color: #f8f9ff;
-    border-color: #0d6efd;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(13, 110, 253, 0.12);
+    background-color: #f5f5f5;
+    border-color: #999;
 }
 
 .history-delete {
@@ -433,8 +483,8 @@ section {
 }
 
 .history-delete:hover {
-    background-color: #ffebee;
-    color: #f44336;
+    background-color: #e5e5e5;
+    color: #666;
 }
 
 .history-item:hover .history-delete {
@@ -442,22 +492,22 @@ section {
 }
 
 .small-btn {
-    padding: 10px 16px;
+    padding: 8px 12px;
     font-family: 'Noto Sans KR', sans-serif;
     font-size: 14px;
     font-weight: 500;
-    background-color: #0d6efd;
-    color: #fff;
+    background-color: transparent;
+    color: #666;
     border: none;
-    border-radius: 10px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
+    min-height: auto;
 }
 
 .small-btn:hover {
-    background-color: #0b5ed7;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(13, 110, 253, 0.2);
+    color: #333;
+    background-color: #f5f5f5;
 }
 
 /* 모달 */
@@ -468,7 +518,7 @@ section {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.8);
+    background-color: rgba(0, 0, 0, 0.6);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -481,13 +531,13 @@ section {
 .modal-content {
     background-color: #fff;
     border: none;
-    border-radius: 16px;
+    border-radius: 12px;
     padding: 30px;
     max-width: 500px;
     width: 90%;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .modal-header {
@@ -496,13 +546,13 @@ section {
     align-items: center;
     margin-bottom: 25px;
     padding-bottom: 15px;
-    border-bottom: 2px solid #e0e0e0;
+    border-bottom: 1px solid #ddd;
 }
 
 .modal-header h2 {
     font-size: 24px;
     font-weight: 700;
-    color: #333;
+    color: #1a1a1a;
 }
 
 .close-btn {
@@ -522,7 +572,7 @@ section {
 }
 
 .close-btn:hover {
-    color: #ff4444;
+    color: #1a1a1a;
     background-color: #f5f5f5;
 }
 
@@ -535,7 +585,7 @@ section {
     font-size: 16px;
     font-weight: 500;
     margin-bottom: 10px;
-    color: #333;
+    color: #1a1a1a;
 }
 
 .form-group input,
@@ -545,8 +595,8 @@ section {
     font-family: 'Noto Sans KR', sans-serif;
     font-size: 16px;
     background-color: #fff;
-    color: #333;
-    border: 2px solid #e0e0e0;
+    color: #1a1a1a;
+    border: 1px solid #ddd;
     border-radius: 8px;
     outline: none;
     transition: all 0.3s;
@@ -554,8 +604,8 @@ section {
 
 .form-group input:focus,
 .form-group select:focus {
-    border-color: #4a90e2;
-    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+    border-color: #888;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
 .form-actions {
@@ -567,36 +617,35 @@ section {
 .primary-btn,
 .secondary-btn {
     flex: 1;
-    padding: 14px 20px;
+    padding: 12px 20px;
     font-family: 'Noto Sans KR', sans-serif;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s ease;
+    min-height: 44px;
 }
 
 .primary-btn {
-    background-color: #4a90e2;
+    background-color: #333;
     color: #fff;
 }
 
 .primary-btn:hover {
-    background-color: #357abd;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+    background-color: #1a1a1a;
 }
 
 .secondary-btn {
     background-color: #f5f5f5;
     color: #666;
-    border: 2px solid #e0e0e0;
+    border: 1px solid #ddd;
 }
 
 .secondary-btn:hover {
-    background-color: #e8e8e8;
-    border-color: #ccc;
+    background-color: #e5e5e5;
+    border-color: #999;
 }
 
 .register-status {
@@ -610,15 +659,15 @@ section {
 }
 
 .register-status.success {
-    border: 2px solid #4caf50;
-    background-color: #f1f8f4;
-    color: #2e7d32;
+    border: 1px solid #999;
+    background-color: #f5f5f5;
+    color: #333;
 }
 
 .register-status.error {
-    border: 2px solid #f44336;
-    background-color: #ffebee;
-    color: #c62828;
+    border: 1px solid #666;
+    background-color: #e5e5e5;
+    color: #1a1a1a;
 }
 
 /* 로딩 오버레이 */
@@ -644,8 +693,8 @@ section {
 .loading-spinner {
     width: 60px;
     height: 60px;
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid #4a90e2;
+    border: 5px solid #333;
+    border-top: 5px solid #fff;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 20px;
@@ -669,15 +718,15 @@ section {
     right: 20px;
     padding: 18px 24px;
     background-color: #fff;
-    border: none;
-    border-radius: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
     font-size: 16px;
     font-weight: 500;
     z-index: 1500;
     display: none;
     max-width: 350px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    color: #333;
+    color: #1a1a1a;
 }
 
 .notification.active {
@@ -698,40 +747,58 @@ section {
 
 /* 스크롤바 스타일링 */
 .results-list::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
 }
 
 .results-list::-webkit-scrollbar-track {
-    background: #f0f0f0;
-    border-radius: 5px;
+    background-color: transparent;
 }
 
 .results-list::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 5px;
+    background-color: #cccccc;
+    border-radius: 4px;
 }
 
 .results-list::-webkit-scrollbar-thumb:hover {
-    background: #999;
+    background-color: #999;
 }
 
 /* 반응형 디자인 */
 @media (max-width: 600px) {
     body {
-        font-size: 14px;
-        padding: 15px;
+        font-size: 16px; /* 모바일에서도 12 이상 유지 */
+        padding: 16px 12px;
+    }
+
+    header {
+        padding: 24px 20px;
+        margin-bottom: 24px;
     }
 
     header h1 {
-        font-size: 24px;
+        font-size: 24px; /* 배수 유지 */
     }
 
     .subtitle {
-        font-size: 12px;
+        font-size: 14px;
     }
 
+    .container {
+        padding: 24px 16px;
+    }
+    
     section {
-        padding: 20px;
+        margin-bottom: 24px;
+        padding: 0;
+    }
+    
+    section:not(:last-child) {
+        padding-bottom: 24px;
+    }
+    
+    header {
+        padding-bottom: 20px;
+        margin-bottom: 24px;
     }
 
     .results-header {
@@ -772,4 +839,3 @@ section {
         font-size: 12px;
     }
 }
-
