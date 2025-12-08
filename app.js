@@ -794,6 +794,71 @@ function displayResults(results) {
     });
 }
 
+// 클라이언트 IP 주소 가져오기
+async function getClientIpAddress() {
+    try {
+        // 로컬 환경 감지 (localhost, 127.0.0.1, 또는 file:// 프로토콜)
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.protocol === 'file:';
+        
+        if (isLocalhost) {
+            console.log('[DEBUG] 로컬 환경 감지, IP 확인 시도 (실패 시 unknown 반환)');
+        }
+        
+        // 여러 IP 확인 서비스 중 하나 사용 (fallback 지원)
+        const ipServices = [
+            'https://api.ipify.org?format=json',
+            'https://api64.ipify.org?format=json',
+            'https://ipapi.co/json/'
+        ];
+        
+        // 타임아웃 설정 (5초)
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('IP 확인 타임아웃')), 5000);
+        });
+        
+        for (const serviceUrl of ipServices) {
+            try {
+                const fetchPromise = fetch(serviceUrl, {
+                    method: 'GET',
+                    cache: 'no-store',
+                    mode: 'cors' // CORS 명시
+                });
+                
+                const response = await Promise.race([fetchPromise, timeoutPromise]);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // ipify는 {ip: "..."} 형식, ipapi는 {ip: "..."} 형식
+                    const ip = data.ip || data.query;
+                    if (ip && typeof ip === 'string' && ip !== '127.0.0.1') {
+                        console.log('[DEBUG] IP 주소 확인 성공:', ip, '(서비스:', serviceUrl, ')');
+                        return ip;
+                    }
+                }
+            } catch (error) {
+                // CORS 오류나 네트워크 오류는 조용히 넘어감
+                if (isLocalhost) {
+                    console.warn('[DEBUG] IP 서비스 실패 (로컬 환경):', serviceUrl, error.message);
+                }
+                continue; // 다음 서비스 시도
+            }
+        }
+        
+        // 모든 서비스 실패 시 'unknown' 반환
+        if (isLocalhost) {
+            console.log('[DEBUG] 로컬 환경에서 IP 확인 실패, unknown 반환 (정상 동작)');
+        } else {
+            console.warn('[DEBUG] 모든 IP 서비스 실패, unknown 반환');
+        }
+        return 'unknown';
+    } catch (error) {
+        console.error('[DEBUG] IP 주소 가져오기 오류:', error);
+        return 'unknown';
+    }
+}
+
 // 클립보드 복사
 async function copyToClipboard(text) {
     try {
@@ -1031,6 +1096,10 @@ async function submitRegistration(name, category, description) {
     
     console.log('[DEBUG] 등록 요청 시작:', { category, name, url: APPS_SCRIPT_WEB_APP_URL });
     
+    // 클라이언트 IP 주소 가져오기
+    const clientIp = await getClientIpAddress();
+    console.log('[DEBUG] 클라이언트 IP 주소:', clientIp);
+    
     // Apps Script 웹 앱 CORS 해결: iframe + postMessage 방식 사용
     // HTML Service를 통해 응답을 받음
     return new Promise((resolve, reject) => {
@@ -1073,9 +1142,16 @@ async function submitRegistration(name, category, description) {
             descriptionInput.name = 'description';
             descriptionInput.value = description || '';
             
+            // IP 주소도 함께 전송
+            const ipInput = document.createElement('input');
+            ipInput.type = 'hidden';
+            ipInput.name = 'ipAddress';
+            ipInput.value = clientIp;
+            
             form.appendChild(categoryInput);
             form.appendChild(nameInput);
             form.appendChild(descriptionInput);
+            form.appendChild(ipInput);
             document.body.appendChild(form);
             
             // postMessage 리스너 (타임아웃 취소 포함)

@@ -83,12 +83,27 @@ function doPost(e) {
     
     // IP 주소 추출
     // 참고: Google Apps Script에서는 클라이언트 IP를 직접 가져올 수 없습니다.
-    // e.parameter는 URL 파라미터나 POST 데이터만 포함하며, IP 주소는 포함되지 않습니다.
-    // 실제 IP 추적이 필요한 경우 다른 방법(로그 분석 등)을 사용해야 합니다.
-    // 여기서는 'unknown'을 기본값으로 사용하여 로컬 테스트를 허용합니다.
-    const ipAddress = 'unknown';
+    // 따라서 클라이언트 측에서 IP를 가져와서 'ipAddress' 파라미터로 전송합니다.
+    // 클라이언트 측에서 IP를 가져오지 못한 경우 'unknown'이 전송됩니다.
+    let ipAddress = 'unknown';
     
-    Logger.log('IP 주소: ' + ipAddress + ' (Apps Script에서는 IP를 직접 가져올 수 없음)');
+    // URL 파라미터 또는 POST 데이터에서 IP 주소 확인
+    if (e.parameter && e.parameter.ipAddress) {
+      ipAddress = e.parameter.ipAddress;
+      Logger.log('IP 주소 (URL 파라미터): ' + ipAddress);
+    } else if (e.postData && e.postData.contents) {
+      try {
+        const requestData = JSON.parse(e.postData.contents);
+        if (requestData.ipAddress) {
+          ipAddress = requestData.ipAddress;
+          Logger.log('IP 주소 (JSON): ' + ipAddress);
+        }
+      } catch (parseError) {
+        // JSON 파싱 실패는 무시 (이미 위에서 처리됨)
+      }
+    }
+    
+    Logger.log('최종 IP 주소: ' + ipAddress);
     
     // 입력 검증
     const validation = validateInput(category, name);
@@ -503,6 +518,40 @@ function syncTagsFromMainSheet() {
  * Gemini API로 검토 및 태그 추천
  */
 function reviewWithGemini(category, name, description) {
+  const maxRetries = 2; // 최대 2회 재시도 (총 3회)
+  let lastError = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        Logger.log(`재시도 ${attempt}회차 시작`);
+      }
+      return reviewWithGeminiOnce(category, name, description);
+    } catch (error) {
+      lastError = error;
+      Logger.log(`시도 ${attempt + 1} 실패: ${error.toString()}`);
+      
+      // JSON 파싱 오류인 경우에만 재시도
+      if (error.toString().includes('JSON') || error.toString().includes('형식이 올바르지 않습니다')) {
+        if (attempt < maxRetries) {
+          Logger.log('JSON 파싱 오류로 재시도합니다...');
+          continue;
+        }
+      }
+      
+      // 다른 오류는 즉시 중단
+      throw error;
+    }
+  }
+  
+  // 모든 재시도 실패
+  throw lastError || new Error('재시도 횟수 초과');
+}
+
+/**
+ * Gemini API로 검토 및 태그 추천 (1회 시도)
+ */
+function reviewWithGeminiOnce(category, name, description) {
   try {
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
@@ -626,55 +675,48 @@ ${biologyPrompt}
 - 사용자 설명이 있으면 반드시 웹 검색으로 검증하고, 설명과 다르면 거부해주세요
 - 존재하지 않거나 부적절한 내용이면 거부해주세요
 
-다음 형식으로 답변해주세요:
-***반드시 첫 줄에 "승인" 또는 "거부" 중 하나만 한 단어로만 작성하세요***
-- 첫 줄에 "승인" 또는 "거부"만 작성하고, 그 아래에 이유를 작성하세요
-- 첫 줄에 다른 설명을 추가하지 마세요
-- 예: 첫 줄이 "승인"이면 → 승인
-- 예: 첫 줄이 "거부"이면 → 거부
-- 혼란을 피하기 위해 첫 줄에는 "승인" 또는 "거부"만 작성하세요
+***반드시 JSON 형식으로만 답변해주세요. 다른 텍스트는 포함하지 마세요.***
 
-승인 또는 거부 (첫 줄에 한 단어로만)
-이유 (한 줄, 웹 검색 결과를 바탕으로 실제 존재 여부를 포함하여 설명)
-적절한 카테고리 (현재 카테고리가 "기타"인 경우에만, 기존 카테고리 목록 중 적합한 것을 추천하거나 "기타" 유지, 없으면 생략)
-- 반드시 "적절한 카테고리:" 또는 "카테고리:" 라는 라벨과 함께 한 줄에 명확하게 표시해주세요
-- 예: "적절한 카테고리: 생물" 또는 "카테고리: 생물"
-추천 태그 (기존 태그 목록에서 적절한 태그만 사용, 쉼표로 구분, 없으면 "없음")
-   - 원칙: 기존 태그 목록(${existingTagsText})을 우선 사용하고, 기존 태그로 표현 가능하면 새로운 태그를 만들지 않음
-   - 태그 규칙:
-     * 카테고리와 중복 제외, 모순 태그 동시 사용 금지, 핵심 태그만 (최대 7개), 구체적 태그 우선
-     * 기존 태그로 의미 전달 가능하면 새 태그 추가하지 않음
-     * "생물" 카테고리인 경우 생물학적 분류 태그(계, 문, 강)만 사용 (최대 3개)
-   - 태그는 번호 없이 태그 이름만 쉼표로 구분
-   - 각 태그는 반드시 쉼표(,)로 구분하고, 태그 이름 사이에 공백은 없어야 함
-   - 예: "태그1,태그2,태그3" (올바름) / "태그1, 태그2, 태그3" (가능하지만 공백 없이 권장) / "태그1 태그2" (잘못됨)
+다음 JSON 형식으로 정확하게 답변해주세요:
+{
+  "approved": true 또는 false,
+  "reason": "이유 (한 줄, 웹 검색 결과를 바탕으로 실제 존재 여부를 포함하여 설명)",
+  "category": "카테고리 (현재 카테고리가 '기타'인 경우에만, 기존 카테고리 목록 중 적합한 것을 추천하거나 '기타' 유지, 없으면 null)",
+  "tags": ["태그1", "태그2", "태그3"] 또는 []
+}
+
+태그 규칙:
+- 기존 태그 목록(${existingTagsText})을 우선 사용하고, 기존 태그로 표현 가능하면 새로운 태그를 만들지 않음
+- 카테고리와 중복 제외, 모순 태그 동시 사용 금지, 핵심 태그만 (최대 3개), 구체적 태그 우선
+- "생물" 카테고리인 경우 생물학적 분류 태그(계, 문, 강)만 사용 (최대 3개)
+- 태그는 반드시 배열 형식으로 제공하고, 각 태그는 문자열로 제공
+- 태그가 없으면 빈 배열 [] 제공
 
 예시 (일반):
-승인
-웹 검색 결과 실제 존재하는 게임 아이템으로 확인되었습니다.
-게임명,MMORPG,아이템
+{
+  "approved": true,
+  "reason": "웹 검색 결과 실제 존재하는 게임 아이템으로 확인되었습니다.",
+  "category": null,
+  "tags": ["게임명", "MMORPG", "아이템"]
+}
 
 예시 (기타 카테고리인 경우):
-승인
-웹 검색 결과 게임 관련 항목으로 확인되었습니다.
-게임
-게임명,MMORPG,온라인게임
+{
+  "approved": true,
+  "reason": "웹 검색 결과 게임 관련 항목으로 확인되었습니다.",
+  "category": "게임",
+  "tags": ["게임명", "MMORPG", "온라인게임"]
+}
 
-또는
+예시 (거부):
+{
+  "approved": false,
+  "reason": "웹 검색 결과 해당 항목이 존재하지 않거나 부적절한 내용입니다.",
+  "category": null,
+  "tags": []
+}
 
-거부
-웹 검색 결과 해당 항목이 존재하지 않거나 부적절한 내용입니다.
-없음
-
-예시 (거부 - 개체 이름):
-거부
-웹 검색 결과 "요미"는 강아지 이름으로 확인되었습니다. 초성 검색 앱의 목적에 맞지 않는 개체 이름이므로 거부합니다.
-없음
-
-예시 (거부 - 개인 이름):
-거부
-웹 검색 결과 "철수"는 일반적인 개인 이름으로 확인되었습니다. 초성 검색 앱의 목적에 맞지 않는 개인 이름이므로 거부합니다.
-없음`;
+***중요: 반드시 유효한 JSON 형식으로만 답변하고, JSON 외의 다른 텍스트는 포함하지 마세요.***`;
 
     const payload = {
       contents: [{
@@ -756,273 +798,80 @@ ${biologyPrompt}
     const tokensUsed = responseData.usageMetadata?.totalTokenCount || 0;
     Logger.log('토큰 사용량: ' + tokensUsed);
     
-    // 응답 파싱
-    const responseText = responseData.candidates[0].content.parts[0].text;
-    Logger.log('응답 텍스트 길이: ' + responseText.length);
-    Logger.log('응답 텍스트 (처음 200자): ' + responseText.substring(0, 200));
+    // 응답 파싱 (JSON 형식)
+    let responseText = responseData.candidates[0].content.parts[0].text;
     Logger.log('응답 텍스트 (전체): ' + responseText);
-    const textLower = responseText.toLowerCase();
     
-    // 거부 키워드를 먼저 확인 (안전 우선)
-    const hasReject = textLower.includes('거부') || textLower.includes('reject') || textLower.includes('deny');
-    const hasApprove = textLower.includes('승인') || textLower.includes('approve');
+    // JSON 추출 (코드 블록이나 마크다운 제거)
+    let jsonText = responseText.trim();
     
-    // 첫 줄 확인 (프롬프트에서 "승인 또는 거부 (한 단어로만)" 지시)
-    const firstLine = responseText.split('\n')[0].trim().toLowerCase();
-    const firstLineReject = firstLine.includes('거부') || firstLine.includes('reject') || firstLine.includes('deny');
-    const firstLineApprove = firstLine.includes('승인') || firstLine.includes('approve');
+    // ```json 또는 ``` 코드 블록 제거
+    if (jsonText.startsWith('```')) {
+      const lines = jsonText.split('\n');
+      const startIndex = lines.findIndex(line => line.trim().startsWith('```'));
+      const endIndex = lines.findIndex((line, idx) => idx > startIndex && line.trim().startsWith('```'));
+      if (startIndex >= 0 && endIndex > startIndex) {
+        jsonText = lines.slice(startIndex + 1, endIndex).join('\n').trim();
+      } else if (startIndex >= 0) {
+        jsonText = lines.slice(startIndex + 1).join('\n').trim();
+      }
+    }
     
-    // 판단 로직: 거부가 명시되어 있으면 무조건 거부, 첫 줄이 명확하면 그것을 우선
-    let approved = false;
-    if (firstLineReject) {
-      approved = false;
-      Logger.log('첫 줄에서 거부 확인');
-    } else if (firstLineApprove && !hasReject) {
-      approved = true;
-      Logger.log('첫 줄에서 승인 확인 (거부 키워드 없음)');
-    } else if (hasReject) {
-      approved = false;
-      Logger.log('응답에 거부 키워드 발견');
-    } else if (hasApprove) {
-      approved = true;
-      Logger.log('응답에 승인 키워드 발견');
-    } else {
-      // 키워드가 없으면 기본적으로 거부 (안전 우선)
-      approved = false;
-      Logger.log('승인/거부 키워드가 없어 기본적으로 거부');
+    // JSON 객체만 추출 (중괄호로 시작하고 끝나는 부분)
+    const jsonStart = jsonText.indexOf('{');
+    const jsonEnd = jsonText.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+    }
+    
+    Logger.log('추출된 JSON 텍스트: ' + jsonText);
+    
+    // JSON 파싱
+    let result;
+    try {
+      result = JSON.parse(jsonText);
+    } catch (parseError) {
+      Logger.log('JSON 파싱 실패, 재시도 요청');
+      // JSON 파싱 실패 시 재시도 (최대 1회)
+      throw new Error('JSON 형식이 올바르지 않습니다. 재시도가 필요합니다: ' + parseError.toString());
+    }
+    
+    // 필수 필드 확인
+    if (typeof result.approved !== 'boolean') {
+      Logger.log('approved 필드가 없거나 boolean이 아님, 재시도 요청');
+      throw new Error('응답 형식이 올바르지 않습니다. approved 필드가 필요합니다.');
+    }
+    
+    const approved = result.approved;
+    const reason = result.reason || '이유 없음';
+    let recommendedCategory = result.category || category; // category가 없으면 원래 카테고리 유지
+    let recommendedTags = Array.isArray(result.tags) ? result.tags : [];
+    
+    Logger.log('파싱된 결과:', { approved, reason, category: recommendedCategory, tags: recommendedTags });
+    
+    // 카테고리 검증 (기존 카테고리 목록에 있는지 확인)
+    if (category === '기타' && recommendedCategory && recommendedCategory !== '기타') {
+      const existingCategories = getExistingCategories();
+      if (existingCategories.indexOf(recommendedCategory) === -1) {
+        Logger.log('추천된 카테고리가 기존 목록에 없음, 원래 카테고리 유지');
+        recommendedCategory = category; // 기존 목록에 없으면 원래 카테고리 유지
+      }
+    } else if (category !== '기타') {
+      recommendedCategory = category; // 기타가 아니면 원래 카테고리 유지
     }
     
     Logger.log('최종 승인 여부: ' + approved);
     
-    // 카테고리 추출 (기타 카테고리인 경우에만)
-    let recommendedCategory = category; // 기본값은 원래 카테고리
-    const lines = responseText.split('\n');
-    
-    if (category === '기타') {
-      // 기존 카테고리 목록 가져오기
-      const existingCategories = getExistingCategories();
-      
-      // 응답에서 카테고리 찾기
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        // 카테고리 키워드가 있는 줄 찾기
-        if (line.includes('카테고리') || (i > 0 && lines[i-1].trim().includes('이유'))) {
-          // "카테고리:" 뒤의 내용 추출
-          let categoryLine = line;
-          const colonIndex = categoryLine.indexOf(':');
-          if (colonIndex >= 0) {
-            categoryLine = categoryLine.substring(colonIndex + 1).trim();
-          }
-          
-          // 기존 카테고리 목록과 비교
-          for (let j = 0; j < existingCategories.length; j++) {
-            const existingCat = existingCategories[j];
-            if (categoryLine.includes(existingCat) || categoryLine === existingCat) {
-              recommendedCategory = existingCat;
-              break;
-            }
-          }
-          
-          // 다음 줄도 확인
-          if (i + 1 < lines.length) {
-            const nextLine = lines[i + 1].trim();
-            for (let j = 0; j < existingCategories.length; j++) {
-              const existingCat = existingCategories[j];
-              if (nextLine === existingCat || nextLine.includes(existingCat)) {
-                recommendedCategory = existingCat;
-                break;
-              }
-            }
-          }
-          
-          if (recommendedCategory !== category) {
-            break;
-          }
-        }
-      }
-      
-      // 카테고리를 찾지 못한 경우, 응답 전체에서 기존 카테고리 찾기
-      if (recommendedCategory === '기타') {
-        // "생물" 카테고리를 우선 확인 (동물/식물 관련 항목일 가능성이 높음)
-        if (responseText.includes('생물') && existingCategories.indexOf('생물') >= 0) {
-          // 생물 관련 키워드 확인
-          const biologyKeywords = ['동물', '식물', '생물', '포유', '조류', '어류', '곤충', '과', '속', '종', '목', '강', '문', '계'];
-          const hasBiologyKeyword = biologyKeywords.some(keyword => {
-            const keywordIndex = responseText.toLowerCase().indexOf(keyword.toLowerCase());
-            if (keywordIndex >= 0) {
-              const context = responseText.substring(Math.max(0, keywordIndex - 30), Math.min(responseText.length, keywordIndex + 30));
-              return context.includes('생물') || context.includes('동물') || context.includes('식물');
-            }
-            return false;
-          });
-          
-          if (hasBiologyKeyword) {
-            recommendedCategory = '생물';
-            Logger.log('생물 관련 키워드 발견, 카테고리를 "생물"로 변경');
-          }
-        }
-        
-        // 다른 카테고리도 확인
-        if (recommendedCategory === '기타') {
-          for (let j = 0; j < existingCategories.length; j++) {
-            const existingCat = existingCategories[j];
-            if (responseText.includes(existingCat) && existingCat !== '기타' && existingCat !== '생물') {
-              // 해당 카테고리가 문맥상 적절한지 확인 (단순 포함이 아닌)
-              const catIndex = responseText.indexOf(existingCat);
-              const beforeText = responseText.substring(Math.max(0, catIndex - 20), catIndex);
-              const afterText = responseText.substring(catIndex, Math.min(responseText.length, catIndex + existingCat.length + 20));
-              
-              // 카테고리가 추천 맥락에서 나온 경우
-              if (beforeText.includes('카테고리') || beforeText.includes('추천') || 
-                  afterText.includes('적절') || afterText.includes('추천')) {
-                recommendedCategory = existingCat;
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // 태그 추출 (기존 태그 + 새로운 태그 모두 포함)
-    let recommendedTags = [];
-    
-    Logger.log('태그 추출 시작, 응답 텍스트:', responseText);
-    
-    // 여러 방법으로 태그 추출 시도
-    // 방법 1: "태그:" 또는 "추천 태그:" 키워드가 있는 줄 찾기
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // "태그" 키워드가 있는 줄 찾기
-      if (line.includes('태그') || (line.includes('추천') && i + 1 < lines.length)) {
-        let tagLine = line;
-        
-        // "태그:" 뒤의 내용 추출
-        const colonIndex = tagLine.indexOf(':');
-        if (colonIndex >= 0) {
-          tagLine = tagLine.substring(colonIndex + 1).trim();
-        }
-        
-        // 같은 줄에서 태그 추출
-        if (tagLine && tagLine !== '없음' && !tagLine.includes('승인') && !tagLine.includes('거부')) {
-          const tagsInLine = tagLine.split(/[,，\s]+/).map(function(tag) {
-            // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
-            tag = tag.trim().replace(/^\d+\.\s*/, '').trim();
-            return tag;
-          }).filter(function(tag) {
-            return tag && tag !== '없음' && tag.length > 0 && tag.length < 50; // 너무 긴 태그 제외
-          });
-          if (tagsInLine.length > 0) {
-            recommendedTags = tagsInLine;
-            Logger.log('같은 줄에서 태그 추출:', recommendedTags);
-            break;
-          }
-        }
-        
-        // 다음 줄 확인
-        if (i + 1 < lines.length) {
-          const nextLine = lines[i + 1].trim();
-          if (nextLine && !nextLine.includes('승인') && !nextLine.includes('거부') && 
-              !nextLine.includes('이유') && !nextLine.includes('카테고리') && 
-              nextLine !== '없음') {
-            const tagsInNextLine = nextLine.split(/[,，\s]+/).map(function(tag) {
-              // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
-              tag = tag.trim().replace(/^\d+\.\s*/, '').trim();
-              return tag;
-            }).filter(function(tag) {
-              return tag && tag !== '없음' && tag.length > 0 && tag.length < 50;
-            });
-            if (tagsInNextLine.length > 0) {
-              recommendedTags = tagsInNextLine;
-              Logger.log('다음 줄에서 태그 추출:', recommendedTags);
-              break;
-            }
-          }
-        }
-      }
-    }
-    
-    // 방법 2: 응답 전체에서 쉼표로 구분된 태그 패턴 찾기 (마지막 3줄)
-    if (recommendedTags.length === 0) {
-      const lastLines = lines.slice(Math.max(0, lines.length - 3));
-      for (let i = 0; i < lastLines.length; i++) {
-        const line = lastLines[i].trim();
-        if (line.includes(',') && !line.includes('승인') && !line.includes('거부') && 
-            !line.includes('이유') && !line.includes('카테고리')) {
-          const tagsInLine = line.split(/[,，]/).map(function(tag) {
-            // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
-            tag = tag.trim().replace(/^\d+\.\s*/, '').trim();
-            return tag;
-          }).filter(function(tag) {
-            return tag && tag !== '없음' && tag.length > 0 && tag.length < 50;
-          });
-          if (tagsInLine.length > 0) {
-            recommendedTags = tagsInLine;
-            Logger.log('마지막 줄에서 태그 추출:', recommendedTags);
-            break;
-          }
-        }
-      }
-    }
-    
-    // 태그를 찾지 못한 경우, 쉼표가 있는 줄에서 태그 추출 시도
-    if (recommendedTags.length === 0) {
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        // 숫자나 특수문자로 시작하지 않고 쉼표가 있는 줄
-        // 카테고리 추출 후 태그가 나올 수 있는 위치 확인
-        if (line.includes(',') && !line.match(/^\d/) && !line.includes('승인') && !line.includes('거부') && !line.includes('이유')) {
-          // 카테고리 추출이 이미 끝난 후의 줄인지 확인
-          let isAfterCategory = false;
-          for (let j = 0; j < i; j++) {
-            if (lines[j].trim().includes('카테고리') || (category === '기타' && lines[j].trim() !== '승인' && lines[j].trim() !== '거부' && lines[j].trim().length > 0 && lines[j].trim().length < 20)) {
-              isAfterCategory = true;
-              break;
-            }
-          }
-          
-          if (isAfterCategory || category !== '기타') {
-            const tagsInLine = line.split(/[,，]/).map(function(tag) {
-              // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
-              tag = tag.trim().replace(/^\d+\.\s*/, '').trim();
-              // 앞뒤 공백 및 특수문자 제거
-              tag = tag.replace(/^[\s\-_]+|[\s\-_]+$/g, '').trim();
-              return tag;
-            }).filter(function(tag) {
-              // 태그 유효성 검사: 빈 문자열, "없음", 너무 긴 태그 제외
-              return tag && tag !== '없음' && tag.length > 0 && tag.length < 50;
-            });
-            // 생물 카테고리는 최대 3개(계, 문, 강), 그 외는 최대 15개
-            // recommendedCategory가 이미 추출되었는지 확인
-            const finalCategoryForTags = (category === '기타' && recommendedCategory && recommendedCategory !== '기타') ? recommendedCategory : category;
-            const maxTags = (finalCategoryForTags === '생물' || recommendedCategory === '생물') ? 3 : 15;
-            if (tagsInLine.length > 0 && tagsInLine.length <= maxTags) {
-              recommendedTags = tagsInLine;
-              break;
-            }
-          }
-        }
-      }
-    }
-    
-    // 추출된 태그에서 기존 태그와 새로운 태그 분리
-    const existingTagsLower = existingTags.map(function(tag) {
-      return tag.toLowerCase();
-    });
-    
-    // 기존 태그와 새로운 태그 모두 포함 (중복 제거)
+    // 태그 검증 및 정리
     const finalTags = [];
     const tagsMap = {};
     
     for (let i = 0; i < recommendedTags.length; i++) {
       let tag = recommendedTags[i];
-      // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
-      tag = tag.replace(/^\d+\.\s*/, '').trim();
-      // 앞뒤 불필요한 문자 제거
-      tag = tag.replace(/^[^\w가-힣]+|[^\w가-힣]+$/g, '').trim();
+      if (!tag || typeof tag !== 'string') continue;
       
-      if (!tag || tag.length === 0 || tag.length >= 50) continue;
+      tag = tag.trim();
+      if (tag.length === 0 || tag.length >= 30) continue; // 최대 30자 제한
       
       const tagLower = tag.toLowerCase();
       
@@ -1041,11 +890,17 @@ ${biologyPrompt}
         Logger.log('생물 카테고리 태그가 3개를 초과하여 제한: ' + finalTags.length + '개 -> 3개');
         finalTags.splice(3);
       }
+    } else {
+      // 생물이 아닌 경우 최대 7개로 제한
+      if (finalTags.length > 7) {
+        Logger.log('태그가 7개를 초과하여 제한: ' + finalTags.length + '개 -> 7개');
+        finalTags.splice(7);
+      }
     }
     
     return {
       approved: approved,
-      reason: responseText,
+      reason: reason, // 파싱된 reason 사용 (JSON 코드 블록 제외)
       category: recommendedCategory, // 추천된 카테고리 (기타인 경우 변경될 수 있음)
       tags: finalTags, // 기존 태그 + 새로운 태그 모두 포함
       tokensUsed: tokensUsed
