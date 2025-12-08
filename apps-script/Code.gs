@@ -95,9 +95,9 @@ function doPost(e) {
       return createErrorResponse(validation.message);
     }
     
-    // 중복 확인
-    if (isDuplicate(name)) {
-      return createErrorResponse('이미 등록된 항목입니다.');
+    // 중복 확인 (카테고리별로 체크)
+    if (isDuplicate(name, category)) {
+      return createErrorResponse(`이미 등록된 항목입니다. (${category} 카테고리)`);
     }
     
     // IP당 시간당 제한 확인
@@ -156,6 +156,7 @@ function doPost(e) {
       }
       
       return createSuccessResponse(successMessage, {
+        name: name,
         category: finalCategory,
         tags: reviewResult.tags || [],
         originalCategory: category
@@ -219,17 +220,21 @@ function validateInput(category, name) {
 }
 
 /**
- * 중복 확인
+ * 중복 확인 (카테고리별로 체크)
+ * 같은 이름이라도 카테고리가 다르면 다른 항목으로 간주
  */
-function isDuplicate(name) {
+function isDuplicate(name, category) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_MAIN);
   if (!sheet) return false;
   
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     // A열: 카테고리, B열: 태그, C열: 이름
-    const nameColumn = data[i].length >= 3 ? data[i][2] : data[i][1]; // C열 또는 B열(하위 호환)
-    if (nameColumn === name) {
+    const rowCategory = data[i].length >= 1 ? data[i][0] : '';
+    const nameColumn = data[i].length >= 3 ? data[i][2] : (data[i].length >= 2 ? data[i][1] : ''); // C열 또는 B열(하위 호환)
+    
+    // 이름과 카테고리가 모두 일치하면 중복
+    if (nameColumn === name && rowCategory === category) {
       return true;
     }
   }

@@ -777,6 +777,12 @@ section:not(:last-child) {
     color: #1a1a1a;
 }
 
+.register-status.info {
+    border: 1px solid #4a90e2;
+    background-color: #e8f4fd;
+    color: #1a5490;
+}
+
 /* 로딩 오버레이 */
 .loading-overlay {
     display: none;

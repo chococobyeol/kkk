@@ -318,8 +318,10 @@ function getChoseong(text) {
 }
 
 // 구글 시트 데이터 로딩
-async function loadData() {
-    showLoading();
+async function loadData(silent = false) {
+    if (!silent) {
+        showLoading();
+    }
     
     try {
         // 캐시 버스터 추가 (CSV 캐시 문제 해결)
@@ -387,14 +389,21 @@ async function loadData() {
         updateCategoryFilter();
         updateTagFilter();
         performSearch(choseongInput.value);
-        showNotification('데이터 로딩 완료!', 'success');
+        
+        if (!silent) {
+            showNotification('데이터 로딩 완료!', 'success');
+        }
         
     } catch (error) {
         console.error('데이터 로딩 실패:', error);
-        showNotification('데이터를 불러올 수 없습니다. 다시 시도해주세요.', 'error');
-        resultsList.innerHTML = '<p class="empty-message">데이터 로딩 실패</p>';
+        if (!silent) {
+            showNotification('데이터를 불러올 수 없습니다. 다시 시도해주세요.', 'error');
+            resultsList.innerHTML = '<p class="empty-message">데이터 로딩 실패</p>';
+        }
     } finally {
-        hideLoading();
+        if (!silent) {
+            hideLoading();
+        }
     }
 }
 
@@ -839,6 +848,16 @@ function clearHistory() {
 function openRegisterModal() {
     // 카테고리 목록 업데이트
     registerCategorySelect.innerHTML = '<option value="">선택하세요</option>';
+    
+    // "기타" 카테고리는 항상 추가 (데이터에 없어도 선택 가능)
+    const hasEtcCategory = categories.has('기타');
+    if (!hasEtcCategory) {
+        const etcOption = document.createElement('option');
+        etcOption.value = '기타';
+        etcOption.textContent = '기타';
+        registerCategorySelect.appendChild(etcOption);
+    }
+    
     const sortedCategories = Array.from(categories).sort();
     sortedCategories.forEach(category => {
         const option = document.createElement('option');
@@ -849,6 +868,12 @@ function openRegisterModal() {
     
     // 카테고리 자동 설정
     autoSetCategory();
+    
+    // 카테고리가 없으면 "기타"로 설정하고 안내 메시지 표시
+    if (categories.size === 0) {
+        registerCategorySelect.value = '기타';
+        showRegisterStatus('카테고리가 없습니다. "기타"로 선택되었습니다. Gemini AI가 적절한 카테고리로 자동 분류합니다.', 'info');
+    }
     
     // 입력 필드 초기화
     registerNameInput.value = '';
@@ -903,6 +928,11 @@ function autoSetCategory() {
             categoryCounts[a] > categoryCounts[b] ? a : b
         );
         registerCategorySelect.value = mostCommonCategory;
+    } else {
+        // 카테고리가 없으면 "기타"로 설정
+        if (registerCategorySelect.querySelector('option[value="기타"]')) {
+            registerCategorySelect.value = '기타';
+        }
     }
 }
 
@@ -935,11 +965,17 @@ function handleRegisterSubmit() {
         return;
     }
     
-    // 중복 확인 (클라이언트 측 사전 검증)
-    const duplicate = database.find(item => item.n === name);
+    // 중복 확인 (클라이언트 측 사전 검증) - 카테고리별로 중복 체크
+    const duplicate = database.find(item => item.n === name && item.t === category);
     if (duplicate) {
-        showRegisterStatus('이미 등록된 항목입니다.', 'error');
+        showRegisterStatus(`이미 등록된 항목입니다. (${category} 카테고리)`, 'error');
         return;
+    }
+    
+    // 같은 이름이 다른 카테고리에 있는 경우 안내
+    const sameNameDifferentCategory = database.find(item => item.n === name && item.t !== category);
+    if (sameNameDifferentCategory) {
+        showRegisterStatus(`참고: 같은 이름이 "${sameNameDifferentCategory.t}" 카테고리에 등록되어 있습니다. 카테고리가 다르면 별도로 등록됩니다.`, 'info');
     }
     
     // Apps Script 웹 앱 URL이 설정되지 않았으면 에러
@@ -1118,6 +1154,9 @@ async function submitRegistration(name, category, description) {
             // 성공 처리
             console.log('[DEBUG] 응답 데이터:', result);
             
+            // 등록된 항목 이름 가져오기 (응답에 없으면 입력값 사용)
+            const registeredName = result.name || registerNameInput.value.trim();
+            
             if (result.success) {
                 // 성공 - 카테고리와 태그 정보 표시
                 let successMessage = result.message || '등록 신청이 승인되었습니다.';
@@ -1140,16 +1179,16 @@ async function submitRegistration(name, category, description) {
                 
             // 데이터 새로고침 (새로 등록된 항목 반영)
             // 구글 시트 CSV 반영 시간을 고려하여 재시도 로직 추가
-            console.log('[DEBUG] 등록 성공, 데이터 새로고침 시작 (등록된 항목:', result.name, ')');
+            console.log('[DEBUG] 등록 성공, 데이터 새로고침 시작 (등록된 항목:', registeredName, ')');
             
             const checkAndLoad = (retryCount = 0) => {
                 const maxRetries = 5;
                 const delay = 2000; // 2초마다 재시도
                 
                 setTimeout(() => {
-                    loadData().then(() => {
-                        console.log('[DEBUG] 데이터 새로고침 완료 (시도:', retryCount + 1, '), 등록된 항목 확인:', result.name);
-                        const registeredItem = database.find(item => item.n === result.name);
+                    loadData(true).then(() => {  // silent 모드로 재시도 (알림 표시 안 함)
+                        console.log('[DEBUG] 데이터 새로고침 완료 (시도:', retryCount + 1, '), 등록된 항목 확인:', registeredName);
+                        const registeredItem = database.find(item => item.n === registeredName);
                         
                         if (registeredItem) {
                             console.log('[DEBUG] 등록된 항목 찾음:', registeredItem);
@@ -1171,7 +1210,7 @@ async function submitRegistration(name, category, description) {
                                 console.log('[DEBUG] 등록된 항목을 찾을 수 없음, 재시도:', retryCount + 1, '/', maxRetries);
                                 checkAndLoad(retryCount + 1);
                             } else {
-                                console.warn('[DEBUG] 등록된 항목을 찾을 수 없음 (최대 재시도 횟수 초과):', result.name);
+                                console.warn('[DEBUG] 등록된 항목을 찾을 수 없음 (최대 재시도 횟수 초과):', registeredName);
                                 showNotification('등록은 완료되었지만 검색에 반영되지 않았습니다. 페이지를 새로고침해주세요.', 'warning');
                             }
                         }
