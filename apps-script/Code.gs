@@ -105,94 +105,178 @@ function doPost(e) {
     
     Logger.log('최종 IP 주소: ' + ipAddress);
     
-    // 입력 검증
+    // ========== 1단계: 입력 검증 ==========
     const validation = validateInput(category, name);
     if (!validation.valid) {
+      // 입력 검증 실패는 등록신청 시트에 저장하지 않음 (잘못된 요청)
       return createErrorResponse(validation.message);
     }
     
-    // 중복 확인 (카테고리별로 체크)
+    // ========== 2단계: 사전 중복 확인 ==========
+    // 요청한 카테고리에서 중복 확인
+    // 같은 이름이라도 카테고리가 다르면 다른 항목으로 간주 (예: "게임 부엉이"와 "생물 부엉이"는 다른 항목)
     if (isDuplicate(name, category)) {
-      return createErrorResponse(`이미 등록된 항목입니다. (${category} 카테고리)`);
+      // 등록신청 시트에 거부 상태로 저장
+      saveRegistrationRequest(ipAddress, category, name, '거부됨', `요청한 카테고리("${category}")에 이미 등록된 항목입니다.`);
+      return createErrorResponse(`이미 등록된 항목입니다. (${category} 카테고리)`, {
+        reason: `요청한 카테고리("${category}")에 이미 등록된 항목입니다.`
+      });
     }
     
+    // ========== 3단계: 제한 확인 ==========
     // IP당 시간당 제한 확인
     if (isRateLimited(ipAddress)) {
-      return createErrorResponse('등록 제한을 초과했습니다. 잠시 후 다시 시도해주세요.');
+      saveRegistrationRequest(ipAddress, category, name, '거부됨', 'IP당 시간당 등록 제한 초과 (1시간에 10개 초과)');
+      return createErrorResponse('등록 제한을 초과했습니다. 잠시 후 다시 시도해주세요.', {
+        reason: 'IP당 시간당 등록 제한 초과 (1시간에 10개 초과)'
+      });
     }
     
     // 토큰 사용량 확인
     const tokenUsage = getTokenUsage();
     if (tokenUsage.tokensUsed >= DAILY_TOKEN_LIMIT) {
-      // 등록신청 시트에 대기 상태로 저장
-      saveRegistrationRequest(ipAddress, category, name, '대기 중', '토큰 제한 초과로 대기 중');
-      return createErrorResponse('일일 등록 제한에 도달했습니다. 나중에 다시 시도해주세요.');
+      saveRegistrationRequest(ipAddress, category, name, '거부됨', '일일 토큰 사용량 제한 초과 (100,000 토큰 초과)');
+      return createErrorResponse('일일 등록 제한에 도달했습니다. 나중에 다시 시도해주세요.', {
+        reason: '일일 토큰 사용량 제한 초과 (100,000 토큰 초과)'
+      });
     }
     
-    // 등록신청 시트에 저장 (상태: 대기 중)
-    const timestamp = new Date().toISOString();
-    const requestId = saveRegistrationRequest(ipAddress, category, name, '대기 중', '');
+    // ========== 4단계: 등록신청 시트에 저장 (대기 중) ==========
+    const requestId = saveRegistrationRequest(ipAddress, category, name, '대기 중', 'Gemini API 검토 대기 중...');
     
-    // Gemini API로 자동 검토 및 태그 추천
-    const reviewResult = reviewWithGemini(category, name, description);
-    
-    if (reviewResult.approved) {
-      // 카테고리가 변경되었으면 변경된 카테고리 사용
-      const finalCategory = reviewResult.category || category;
+    // ========== 5단계: Gemini API 검토 ==========
+    let reviewResult;
+    let tokensUsed = 0;
+    try {
+      reviewResult = reviewWithGemini(category, name, description);
+      tokensUsed = reviewResult.tokensUsed || 0;
+    } catch (apiError) {
+      // API 오류 발생 시 등록신청 시트에 거부 상태로 저장
+      let errorMessage = 'Gemini API 호출 중 오류 발생: ' + apiError.toString();
+      let statusMessage = errorMessage;
       
-      // 승인된 경우 메인 시트에 추가 (태그 포함)
+      // 오류 유형별 상세 메시지
+      if (apiError.toString().includes('429') || apiError.toString().includes('할당량을 초과')) {
+        statusMessage = 'Gemini API 요청 한도 초과 (429 Too Many Requests) - 일일 할당량 또는 분당 요청 수 제한 초과';
+        errorMessage = 'API 요청 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.';
+      } else if (apiError.toString().includes('500') || apiError.toString().includes('503')) {
+        statusMessage = 'Gemini API 서버 오류 (' + apiError.toString() + ') - 일시적인 서버 문제로 검토 불가';
+        errorMessage = 'API 서버에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      } else if (apiError.toString().includes('401') || apiError.toString().includes('403')) {
+        statusMessage = 'Gemini API 인증 오류 (' + apiError.toString() + ') - API 키 문제 또는 권한 없음';
+        errorMessage = 'API 인증에 문제가 발생했습니다. 관리자에게 문의해주세요.';
+      }
+      
+      // 등록신청 시트 상태 업데이트
+      updateRegistrationStatus(requestId, '거부됨', statusMessage, 0);
+      
+      return createErrorResponse(errorMessage, {
+        reason: statusMessage
+      });
+    }
+    
+    // ========== 6단계: 검토 결과 처리 ==========
+    if (!reviewResult.approved) {
+      // 거부된 경우
+      updateRegistrationStatus(requestId, '거부됨', reviewResult.reason || 'Gemini API에 의해 거부됨', tokensUsed);
+      updateTokenUsage(tokensUsed);
+      
+      return createErrorResponse('등록 신청이 거부되었습니다: ' + (reviewResult.reason || '이유 없음'), {
+        reason: reviewResult.reason || 'Gemini API에 의해 거부됨'
+      });
+    }
+    
+    // 승인된 경우: 최종 카테고리 결정
+    const finalCategory = reviewResult.category || category;
+    const categoryChanged = (category !== finalCategory);
+    
+    // ========== 7단계: 최종 카테고리에서 중복 확인 ==========
+    // 카테고리가 변경되었거나 변경되지 않았더라도 최종 확인
+    // (카테고리 변경 시 중복 방지 + 동시 등록 방지)
+    if (isDuplicate(name, finalCategory)) {
+      const reasonMessage = categoryChanged 
+        ? `카테고리 자동 변경 후 중복 발견: "${category}" → "${finalCategory}" 카테고리에 이미 등록된 항목입니다.`
+        : `최종 확인 중 중복 발견: "${finalCategory}" 카테고리에 이미 등록된 항목입니다. (동시 등록 가능성)`;
+      
+      updateRegistrationStatus(requestId, '거부됨', reasonMessage, tokensUsed);
+      updateTokenUsage(tokensUsed);
+      
+      return createErrorResponse(
+        categoryChanged 
+          ? `카테고리가 "${finalCategory}"로 변경되었지만, 해당 카테고리에 이미 등록된 항목입니다.`
+          : `"${finalCategory}" 카테고리에 이미 등록된 항목입니다.`,
+        { reason: reasonMessage }
+      );
+    }
+    
+    // ========== 8단계: 메인 시트에 등록 ==========
+    try {
       addToMainSheet(finalCategory, name, reviewResult.tags || []);
-      
-      // 태그와 카테고리를 별도 시트에 동기화
       syncTagsToSheet(reviewResult.tags || [], finalCategory);
       syncCategoryToSheet(finalCategory);
-      
-      // 카테고리가 변경되었으면 로그에 기록
-      let statusMessage = reviewResult.reason;
-      if (category === '기타' && finalCategory !== '기타') {
-        statusMessage = `[카테고리 자동 변경: ${category} → ${finalCategory}]\n${reviewResult.reason}`;
-      }
-      
-      updateRegistrationStatus(requestId, '승인됨', statusMessage, reviewResult.tokensUsed);
-      
-      // 토큰 사용량 업데이트
-      updateTokenUsage(reviewResult.tokensUsed);
-      
-      // 성공 응답에 카테고리와 태그 정보 포함
-      let successMessage = '등록 신청이 승인되었습니다.';
-      if (category === '기타' && finalCategory !== '기타') {
-        successMessage += `\n카테고리: ${category} → ${finalCategory}`;
-      } else {
-        successMessage += `\n카테고리: ${finalCategory}`;
-      }
-      if (reviewResult.tags && reviewResult.tags.length > 0) {
-        successMessage += `\n태그: ${reviewResult.tags.join(', ')}`;
-      } else {
-        successMessage += '\n태그: 없음';
-      }
-      
-      return createSuccessResponse(successMessage, {
-        name: name,
-        category: finalCategory,
-        tags: reviewResult.tags || [],
-        originalCategory: category
-      });
-    } else {
-      // 거부된 경우
-      updateRegistrationStatus(requestId, '거부됨', reviewResult.reason, reviewResult.tokensUsed);
-      
-      // 토큰 사용량 업데이트
-      updateTokenUsage(reviewResult.tokensUsed);
-      
-      // 거부 응답에 사유 포함
-      return createErrorResponse('등록 신청이 거부되었습니다: ' + reviewResult.reason, {
-        reason: reviewResult.reason
+    } catch (sheetError) {
+      // 시트 저장 실패 시
+      updateRegistrationStatus(requestId, '거부됨', `시트 저장 실패: ${sheetError.toString()}`, tokensUsed);
+      updateTokenUsage(tokensUsed);
+      return createErrorResponse('데이터 저장 중 오류가 발생했습니다. 관리자에게 문의해주세요.', {
+        reason: `시트 저장 실패: ${sheetError.toString()}`
       });
     }
+    
+    // ========== 9단계: 등록신청 시트 상태 업데이트 ==========
+    let statusMessage = reviewResult.reason || '승인됨';
+    if (categoryChanged) {
+      statusMessage = `[카테고리 자동 변경: ${category} → ${finalCategory}]\n${reviewResult.reason || '승인됨'}`;
+    }
+    
+    updateRegistrationStatus(requestId, '승인됨', statusMessage, tokensUsed);
+    updateTokenUsage(tokensUsed);
+    
+    // 성공 응답에 카테고리와 태그 정보 포함
+    let successMessage = '등록 신청이 승인되었습니다.';
+    if (category === '기타' && finalCategory !== '기타') {
+      successMessage += `\n카테고리: ${category} → ${finalCategory}`;
+    } else {
+      successMessage += `\n카테고리: ${finalCategory}`;
+    }
+    if (reviewResult.tags && reviewResult.tags.length > 0) {
+      successMessage += `\n태그: ${reviewResult.tags.join(', ')}`;
+    } else {
+      successMessage += '\n태그: 없음';
+    }
+    
+    return createSuccessResponse(successMessage, {
+      name: name,
+      category: finalCategory,
+      tags: reviewResult.tags || [],
+      originalCategory: category
+    });
     
   } catch (error) {
     Logger.log('Error: ' + error.toString());
-    return createErrorResponse('서버 오류가 발생했습니다: ' + error.toString());
+    
+    // 등록신청 시트에 저장된 경우 상태 업데이트
+    // requestId가 있는 경우에만 업데이트 (이미 저장된 경우)
+    try {
+      // requestId가 스코프에 있는지 확인하고, 있으면 업데이트
+      if (typeof requestId !== 'undefined' && requestId) {
+        updateRegistrationStatus(requestId, '거부됨', '서버 오류 발생: ' + error.toString(), 0);
+      } else {
+        // requestId가 없으면 새로 저장 (입력 검증 전 오류 등)
+        const ipAddress = (e.parameter && e.parameter.ipAddress) || 'unknown';
+        const category = (e.parameter && e.parameter.category) || '';
+        const name = (e.parameter && e.parameter.name) || '';
+        if (category && name) {
+          saveRegistrationRequest(ipAddress, category, name, '거부됨', '서버 오류 발생: ' + error.toString());
+        }
+      }
+    } catch (saveError) {
+      Logger.log('등록신청 시트 저장 실패: ' + saveError.toString());
+    }
+    
+    return createErrorResponse('서버 오류가 발생했습니다: ' + error.toString(), {
+      reason: '서버 오류 발생: ' + error.toString()
+    });
   }
 }
 
@@ -255,6 +339,29 @@ function isDuplicate(name, category) {
     }
   }
   return false;
+}
+
+/**
+ * 모든 카테고리에서 같은 이름이 있는지 확인
+ * @param {string} name - 확인할 이름
+ * @return {string|null} - 이름이 있는 카테고리 이름, 없으면 null
+ */
+function findExistingCategory(name) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_MAIN);
+  if (!sheet) return null;
+  
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    // A열: 카테고리, B열: 태그, C열: 이름
+    const rowCategory = data[i].length >= 1 ? data[i][0] : '';
+    const nameColumn = data[i].length >= 3 ? data[i][2] : (data[i].length >= 2 ? data[i][1] : ''); // C열 또는 B열(하위 호환)
+    
+    // 이름이 일치하면 해당 카테고리 반환
+    if (nameColumn === name && rowCategory) {
+      return rowCategory.toString().trim();
+    }
+  }
+  return null;
 }
 
 /**

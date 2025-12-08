@@ -440,6 +440,14 @@ section:not(:last-child) {
     min-width: 0;
 }
 
+.result-name strong {
+    font-weight: 700;
+    color: #000;
+    background-color: rgba(0, 0, 0, 0.08);
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
 .result-left {
     flex: 1;
     min-width: 0;

@@ -699,7 +699,35 @@ function performSearch(query) {
         });
     }
     
-    // 4단계: 검색 결과 제한 (성능 보호)
+    // 4단계: 검색 결과 정렬 (완전 일치 > 앞부분 일치 > 가나다 순)
+    results.sort((a, b) => {
+        // 검색어가 있는 경우에만 정렬 우선순위 적용
+        if (searchQuery) {
+            // 완전 일치 여부 확인 (초성이 정확히 일치하는지)
+            const aExactMatch = a.c === searchQuery;
+            const bExactMatch = b.c === searchQuery;
+            
+            // 완전 일치가 최우선
+            if (aExactMatch && !bExactMatch) return -1;
+            if (!aExactMatch && bExactMatch) return 1;
+            
+            // 둘 다 완전 일치가 아닌 경우, 앞부분 일치 확인
+            if (!aExactMatch && !bExactMatch) {
+                const aStartsWith = a.c && a.c.startsWith(searchQuery);
+                const bStartsWith = b.c && b.c.startsWith(searchQuery);
+                
+                // 앞부분 일치가 우선
+                if (aStartsWith && !bStartsWith) return -1;
+                if (!aStartsWith && bStartsWith) return 1;
+            }
+        }
+        
+        // 같은 우선순위인 경우 가나다 순으로 정렬
+        // 이름(n)을 기준으로 가나다 순 정렬
+        return a.n.localeCompare(b.n, 'ko');
+    });
+    
+    // 5단계: 검색 결과 제한 (성능 보호)
     if (results.length > MAX_RESULTS) {
         results = results.slice(0, MAX_RESULTS);
     }
@@ -740,6 +768,71 @@ function performSearch(query) {
     }
 }
 
+// 이름에서 검색어와 일치하는 초성 부분을 하이라이트 처리
+function highlightChoseongMatch(name, choseong, searchQuery) {
+    if (!searchQuery || !choseong || !name) {
+        return name;
+    }
+    
+    // 검색어가 초성에 포함되는 위치 찾기
+    const matchIndex = choseong.indexOf(searchQuery);
+    if (matchIndex === -1) {
+        return name;
+    }
+    
+    // 일치하는 초성 부분에 해당하는 실제 이름의 문자 범위 찾기
+    // 각 문자를 초성으로 변환하면서 위치 추적
+    let currentChoseongIndex = 0;
+    let startCharIndex = -1;
+    let endCharIndex = -1;
+    
+    for (let i = 0; i < name.length; i++) {
+        const char = name[i];
+        
+        // 공백은 건너뛰기 (초성 인덱스는 증가시키지 않음)
+        if (char === ' ') {
+            continue;
+        }
+        
+        const charChoseong = getChoseong(char);
+        
+        // 현재 초성 인덱스가 검색어 시작 위치와 일치하면 시작 위치 기록
+        if (currentChoseongIndex === matchIndex && startCharIndex === -1) {
+            startCharIndex = i;
+        }
+        
+        // 초성 인덱스 업데이트
+        if (charChoseong) {
+            currentChoseongIndex += charChoseong.length;
+        }
+        
+        // 검색어 길이만큼 초성을 확인했는지 체크
+        if (startCharIndex !== -1 && currentChoseongIndex >= matchIndex + searchQuery.length) {
+            endCharIndex = i + 1;
+            break;
+        }
+    }
+    
+    // 일치하는 부분을 찾지 못했으면 원본 반환
+    if (startCharIndex === -1 || endCharIndex === -1) {
+        return name;
+    }
+    
+    // 볼드 처리된 HTML 생성
+    const before = name.substring(0, startCharIndex);
+    const match = name.substring(startCharIndex, endCharIndex);
+    const after = name.substring(endCharIndex);
+    
+    return `${escapeHtml(before)}<strong>${escapeHtml(match)}</strong>${escapeHtml(after)}`;
+}
+
+// HTML 이스케이프 함수
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // 검색 결과 표시
 function displayResults(results) {
     if (results.length === 0) {
@@ -747,6 +840,7 @@ function displayResults(results) {
         return;
     }
     
+    const searchQuery = choseongInput.value.trim();
     resultsList.innerHTML = '';
     
     results.forEach(item => {
@@ -762,7 +856,8 @@ function displayResults(results) {
         
         const nameSpan = document.createElement('span');
         nameSpan.className = 'result-name';
-        nameSpan.textContent = item.n;
+        // 초성 일치 부분 하이라이트 처리
+        nameSpan.innerHTML = highlightChoseongMatch(item.n, item.c, searchQuery);
         
         leftSection.appendChild(categorySpan);
         leftSection.appendChild(nameSpan);
