@@ -12,6 +12,7 @@ let selectedCategory = 'all';
 let selectedTags = []; // 선택된 태그 배열
 let availableTags = new Set(); // 현재 카테고리의 사용 가능한 태그
 let debounceTimer = null;
+let registerStatusAnimationInterval = null; // 등록 상태 애니메이션 인터벌
 
 // 성능 설정
 const MAX_RESULTS = 500; // 최대 검색 결과 수
@@ -1082,6 +1083,8 @@ function openRegisterModal() {
 
 function closeRegisterModal() {
     registerModal.classList.remove('active');
+    // 모달 닫을 때 애니메이션 중지
+    stopRegisterStatusAnimation();
 }
 
 // 카테고리 자동 설정
@@ -1185,8 +1188,8 @@ function handleRegisterSubmit() {
 
 // 정답 등록 API 호출
 async function submitRegistration(name, category, description) {
-    // 로딩 상태 표시
-    showRegisterStatus('등록 신청 중...', 'success');
+    // 로딩 상태 표시 (점 애니메이션)
+    startRegisterStatusAnimation('등록 신청 중');
     submitRegisterBtn.disabled = true;
     
     console.log('[DEBUG] 등록 요청 시작:', { category, name, url: APPS_SCRIPT_WEB_APP_URL });
@@ -1454,7 +1457,38 @@ async function submitRegistration(name, category, description) {
         });
 }
 
+// 등록 상태 점 애니메이션 시작
+function startRegisterStatusAnimation(baseMessage) {
+    let dotCount = 0;
+    const maxDots = 3;
+    
+    // 기존 애니메이션 중지
+    stopRegisterStatusAnimation();
+    
+    // 즉시 첫 메시지 표시
+    registerStatus.textContent = baseMessage;
+    registerStatus.className = 'register-status success';
+    
+    // 애니메이션 시작
+    registerStatusAnimationInterval = setInterval(() => {
+        dotCount = (dotCount + 1) % (maxDots + 1);
+        const dots = '.'.repeat(dotCount);
+        registerStatus.textContent = baseMessage.replace(/\.+$/, '') + dots;
+    }, 500); // 0.5초마다 업데이트
+}
+
+// 등록 상태 점 애니메이션 중지
+function stopRegisterStatusAnimation() {
+    if (registerStatusAnimationInterval) {
+        clearInterval(registerStatusAnimationInterval);
+        registerStatusAnimationInterval = null;
+    }
+}
+
 function showRegisterStatus(message, type) {
+    // 애니메이션 중지
+    stopRegisterStatusAnimation();
+    
     registerStatus.textContent = message;
     registerStatus.className = `register-status ${type}`;
 }
