@@ -325,7 +325,6 @@ async function loadData(silent = false) {
     
     try {
         // 캐시 버스터 추가 (CSV 캐시 문제 해결)
-        const cacheBuster = '?t=' + Date.now();
         const sheetUrl = DEFAULT_SHEET_URL + (DEFAULT_SHEET_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
         const response = await fetch(sheetUrl, {
             cache: 'no-store',
@@ -1049,6 +1048,9 @@ async function submitRegistration(name, category, description) {
             form.appendChild(descriptionInput);
             document.body.appendChild(form);
             
+            // postMessage 리스너 (타임아웃 취소 포함)
+            let messageHandlerRegistered = false;
+            
             // 타임아웃 설정 (30초)
             const timeoutId = setTimeout(() => {
                 // 이벤트 리스너 정리
@@ -1066,9 +1068,6 @@ async function submitRegistration(name, category, description) {
                 }
                 reject(new Error('요청 시간 초과'));
             }, 30000);
-            
-            // postMessage 리스너 (타임아웃 취소 포함)
-            let messageHandlerRegistered = false;
             const messageHandler = (event) => {
                 // 디버깅: 모든 postMessage 로그
                 console.log('[DEBUG] postMessage 수신:', {
