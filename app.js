@@ -1,5 +1,7 @@
 // 전역 변수
 const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTNgKTsKcqDr4etDeuMtzfJqlFDfsDuCTRA3AgGdUtaIimSGV6Jc-kUO2zEEUf3MJbfic_21tnjo3oz/pub?output=csv';
+// Apps Script 웹 앱 URL
+const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzXkUvDc47reTLF2GgMW114LJMJ_lIxuVuBMkWVx8ClNApwHF4VRaG1VTx4nnlg_zVcSg/exec';
 let database = [];
 let filteredDatabase = [];
 let searchHistory = []; // { query: string, timestamp: number } 형식
@@ -34,6 +36,7 @@ const cancelRegisterBtn = document.getElementById('cancelRegisterBtn');
 const submitRegisterBtn = document.getElementById('submitRegisterBtn');
 const registerNameInput = document.getElementById('registerNameInput');
 const registerCategorySelect = document.getElementById('registerCategorySelect');
+const registerDescriptionInput = document.getElementById('registerDescriptionInput');
 const registerStatus = document.getElementById('registerStatus');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const notification = document.getElementById('notification');
@@ -319,8 +322,15 @@ async function loadData() {
     showLoading();
     
     try {
-        const sheetUrl = DEFAULT_SHEET_URL;
-        const response = await fetch(sheetUrl);
+        // 캐시 버스터 추가 (CSV 캐시 문제 해결)
+        const cacheBuster = '?t=' + Date.now();
+        const sheetUrl = DEFAULT_SHEET_URL + (DEFAULT_SHEET_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const response = await fetch(sheetUrl, {
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache'
+            }
+        });
         
         if (!response.ok) {
             throw new Error('데이터를 불러올 수 없습니다.');
@@ -334,10 +344,11 @@ async function loadData() {
             lines.shift();
         }
         
+        const oldDatabaseLength = database.length;
         database = [];
         categories.clear();
         
-        lines.forEach(line => {
+        lines.forEach((line, index) => {
             // CSV 파싱 (쉼표로 분리, 따옴표 처리)
             const parts = parseCSVLine(line);
             if (parts.length >= 2) {
@@ -348,7 +359,7 @@ async function loadData() {
                     // 태그가 있으면 쉼표로 분리
                     tags = parts[1].trim().split(',').map(tag => tag.trim()).filter(tag => tag);
                 }
-                // 이름은 마지막 컬럼 또는 B열(태그가 없는 경우)
+                // 이름은 C열 (parts[2]) 또는 B열(태그가 없는 경우 parts[1])
                 const name = (parts.length >= 3 ? parts[2] : parts[1]).trim();
                 
                 if (category && name) {
@@ -360,9 +371,18 @@ async function loadData() {
                         c: choseong
                     });
                     categories.add(category);
+                } else if (parts.length >= 2) {
+                    // 디버깅: 파싱 실패한 라인 로그
+                    console.warn('[DEBUG] 파싱 실패한 라인:', index + 2, parts);
                 }
             }
         });
+        
+        // 디버깅: 데이터 로드 확인
+        console.log('[DEBUG] 데이터 로드 완료:', database.length, '개 항목 (이전:', oldDatabaseLength, '개)');
+        if (database.length > 0) {
+            console.log('[DEBUG] 최근 5개 항목:', database.slice(-5).map(item => ({ name: item.n, category: item.t, tags: item.tags })));
+        }
         
         updateCategoryFilter();
         updateTagFilter();
@@ -631,7 +651,7 @@ function performSearch(query) {
     // 3단계: 초성 검색 (가장 비용이 큰 작업을 마지막에)
     if (searchQuery) {
         results = results.filter(item => {
-            return item.c.includes(searchQuery);
+            return item.c && item.c.includes(searchQuery);
         });
     }
     
@@ -832,6 +852,7 @@ function openRegisterModal() {
     
     // 입력 필드 초기화
     registerNameInput.value = '';
+    registerDescriptionInput.value = '';
     registerStatus.textContent = '';
     registerStatus.className = 'register-status';
     
@@ -889,6 +910,7 @@ function autoSetCategory() {
 function handleRegisterSubmit() {
     const name = registerNameInput.value.trim();
     const category = registerCategorySelect.value;
+    const description = registerDescriptionInput ? registerDescriptionInput.value.trim() : '';
     
     // 입력 검증
     if (!name) {
@@ -913,20 +935,277 @@ function handleRegisterSubmit() {
         return;
     }
     
-    // 중복 확인
+    // 중복 확인 (클라이언트 측 사전 검증)
     const duplicate = database.find(item => item.n === name);
     if (duplicate) {
         showRegisterStatus('이미 등록된 항목입니다.', 'error');
         return;
     }
     
-    // UI만 구현 - 실제 등록은 하지 않음
-    showRegisterStatus('등록 신청이 접수되었습니다. 검토 후 승인됩니다. (UI만 구현됨)', 'success');
+    // Apps Script 웹 앱 URL이 설정되지 않았으면 에러
+    if (!APPS_SCRIPT_WEB_APP_URL) {
+        showRegisterStatus('서버 설정이 필요합니다. 관리자에게 문의하세요.', 'error');
+        return;
+    }
     
-    // 3초 후 모달 닫기
-    setTimeout(() => {
-        closeRegisterModal();
-    }, 3000);
+    // 등록 요청 전송
+    submitRegistration(name, category, description);
+}
+
+// 정답 등록 API 호출
+async function submitRegistration(name, category, description) {
+    // 로딩 상태 표시
+    showRegisterStatus('등록 신청 중...', 'success');
+    submitRegisterBtn.disabled = true;
+    
+    console.log('[DEBUG] 등록 요청 시작:', { category, name, url: APPS_SCRIPT_WEB_APP_URL });
+    
+    // Apps Script 웹 앱 CORS 해결: iframe + postMessage 방식 사용
+    // HTML Service를 통해 응답을 받음
+    return new Promise((resolve, reject) => {
+        try {
+            // iframe 생성
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.name = 'apps-script-iframe-' + Date.now();
+            
+            // iframe 로드 이벤트 추가 (디버깅)
+            iframe.onload = () => {
+                console.log('[DEBUG] iframe 로드 완료:', iframe.src || iframe.name);
+            };
+            
+            iframe.onerror = (error) => {
+                console.error('[DEBUG] iframe 로드 오류:', error);
+            };
+            
+            document.body.appendChild(iframe);
+            
+            // postMessage 리스너
+            const messageHandler = (event) => {
+                console.log('[DEBUG] postMessage 수신:', {
+                    origin: event.origin,
+                    data: event.data,
+                    source: event.source
+                });
+                
+                // 보안: Apps Script 도메인에서 온 메시지만 처리
+                const allowedOrigins = [
+                    'https://script.google.com',
+                    'https://script.googleusercontent.com',
+                    'https://*.googleusercontent.com'
+                ];
+                
+                const isAllowed = allowedOrigins.some(allowed => {
+                    if (allowed.includes('*')) {
+                        const pattern = allowed.replace('*', '.*');
+                        return new RegExp(pattern).test(event.origin);
+                    }
+                    return event.origin === allowed;
+                });
+                
+                if (!isAllowed) {
+                    console.log('[DEBUG] 허용되지 않은 origin:', event.origin);
+                    return;
+                }
+                
+                // 데이터가 객체인지 확인
+                let result;
+                if (typeof event.data === 'string') {
+                    try {
+                        result = JSON.parse(event.data);
+                    } catch (e) {
+                        console.error('[DEBUG] JSON 파싱 실패:', event.data);
+                        return;
+                    }
+                } else if (typeof event.data === 'object' && event.data !== null) {
+                    result = event.data;
+                } else {
+                    console.error('[DEBUG] 예상치 못한 데이터 형식:', typeof event.data, event.data);
+                    return;
+                }
+                
+                console.log('[DEBUG] 파싱된 응답:', result);
+                
+                // iframe과 form 제거 (안전하게)
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
+                if (document.body.contains(form)) {
+                    document.body.removeChild(form);
+                }
+                window.removeEventListener('message', messageHandler);
+                
+                if (result.success) {
+                    resolve(result);
+                } else {
+                    reject(new Error(result.message || '등록 실패'));
+                }
+            };
+            
+            // 모든 postMessage 수신 (디버깅용)
+            const debugMessageHandler = (event) => {
+                console.log('[DEBUG] 모든 postMessage:', {
+                    origin: event.origin,
+                    data: event.data,
+                    source: event.source
+                });
+            };
+            
+            window.addEventListener('message', debugMessageHandler);
+            window.addEventListener('message', messageHandler);
+            
+            // 폼 생성하여 iframe으로 제출
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = APPS_SCRIPT_WEB_APP_URL;
+            form.target = iframe.name;
+            form.style.display = 'none';
+            
+            const categoryInput = document.createElement('input');
+            categoryInput.type = 'hidden';
+            categoryInput.name = 'category';
+            categoryInput.value = category;
+            
+            const nameInput = document.createElement('input');
+            nameInput.type = 'hidden';
+            nameInput.name = 'name';
+            nameInput.value = name;
+            
+            const descriptionInput = document.createElement('input');
+            descriptionInput.type = 'hidden';
+            descriptionInput.name = 'description';
+            descriptionInput.value = description || '';
+            
+            form.appendChild(categoryInput);
+            form.appendChild(nameInput);
+            form.appendChild(descriptionInput);
+            document.body.appendChild(form);
+            
+            // 타임아웃 설정 (30초)
+            const timeoutId = setTimeout(() => {
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
+                if (document.body.contains(form)) {
+                    document.body.removeChild(form);
+                }
+                window.removeEventListener('message', messageHandler);
+                reject(new Error('요청 시간 초과'));
+            }, 30000);
+            
+            // 메시지 핸들러에서 타임아웃 취소
+            const originalMessageHandler = messageHandler;
+            const wrappedMessageHandler = (event) => {
+                clearTimeout(timeoutId);
+                originalMessageHandler(event);
+            };
+            
+            window.removeEventListener('message', messageHandler);
+            window.addEventListener('message', wrappedMessageHandler);
+            
+            form.submit();
+            
+            // form은 submit 후 즉시 제거하지 않음 (iframe이 로드될 때까지 유지)
+            setTimeout(() => {
+                if (document.body.contains(form)) {
+                    document.body.removeChild(form);
+                }
+            }, 100);
+        } catch (error) {
+            reject(error);
+        }
+    }).then((result) => {
+            // 성공 처리
+            console.log('[DEBUG] 응답 데이터:', result);
+            
+            if (result.success) {
+                // 성공 - 카테고리와 태그 정보 표시
+                let successMessage = result.message || '등록 신청이 승인되었습니다.';
+                
+                if (result.category) {
+                    if (result.originalCategory && result.originalCategory === '기타' && result.category !== '기타') {
+                        successMessage += `\n\n카테고리: ${result.originalCategory} → ${result.category} (자동 변경됨)`;
+                    } else {
+                        successMessage += `\n\n카테고리: ${result.category}`;
+                    }
+                }
+                
+                if (result.tags && result.tags.length > 0) {
+                    successMessage += `\n태그: ${result.tags.join(', ')}`;
+                } else {
+                    successMessage += '\n태그: 없음';
+                }
+                
+                showRegisterStatus(successMessage, 'success');
+                
+            // 데이터 새로고침 (새로 등록된 항목 반영)
+            // 구글 시트 CSV 반영 시간을 고려하여 재시도 로직 추가
+            console.log('[DEBUG] 등록 성공, 데이터 새로고침 시작 (등록된 항목:', result.name, ')');
+            
+            const checkAndLoad = (retryCount = 0) => {
+                const maxRetries = 5;
+                const delay = 2000; // 2초마다 재시도
+                
+                setTimeout(() => {
+                    loadData().then(() => {
+                        console.log('[DEBUG] 데이터 새로고침 완료 (시도:', retryCount + 1, '), 등록된 항목 확인:', result.name);
+                        const registeredItem = database.find(item => item.n === result.name);
+                        
+                        if (registeredItem) {
+                            console.log('[DEBUG] 등록된 항목 찾음:', registeredItem);
+                            console.log('[DEBUG] 초성:', registeredItem.c);
+                            
+                            // 검색 재실행
+                            const currentQuery = choseongInput.value.trim();
+                            if (currentQuery) {
+                                console.log('[DEBUG] 검색 재실행, 쿼리:', currentQuery);
+                                performSearch(currentQuery);
+                            } else {
+                                // 검색어가 없으면 등록된 항목의 초성으로 검색
+                                console.log('[DEBUG] 등록된 항목의 초성으로 검색:', registeredItem.c);
+                                choseongInput.value = registeredItem.c;
+                                performSearch(registeredItem.c);
+                            }
+                        } else {
+                            if (retryCount < maxRetries) {
+                                console.log('[DEBUG] 등록된 항목을 찾을 수 없음, 재시도:', retryCount + 1, '/', maxRetries);
+                                checkAndLoad(retryCount + 1);
+                            } else {
+                                console.warn('[DEBUG] 등록된 항목을 찾을 수 없음 (최대 재시도 횟수 초과):', result.name);
+                                showNotification('등록은 완료되었지만 검색에 반영되지 않았습니다. 페이지를 새로고침해주세요.', 'warning');
+                            }
+                        }
+                    }).catch(error => {
+                        console.error('[DEBUG] 데이터 로드 실패:', error);
+                        if (retryCount < maxRetries) {
+                            checkAndLoad(retryCount + 1);
+                        }
+                    });
+                }, delay);
+            };
+            
+            checkAndLoad();
+                
+                // 5초 후 모달 닫기 (정보를 읽을 시간 제공)
+                setTimeout(() => {
+                    closeRegisterModal();
+                }, 5000);
+            } else {
+                // 실패 - 거부 사유 표시
+                let errorMessage = result.message || '등록 신청이 거부되었습니다.';
+                
+                if (result.reason) {
+                    errorMessage += `\n\n거부 사유:\n${result.reason}`;
+                }
+                
+                showRegisterStatus(errorMessage, 'error');
+            }
+        }).catch((error) => {
+            console.error('등록 요청 실패:', error);
+            showRegisterStatus(error.message || '등록 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 'error');
+        }).finally(() => {
+            submitRegisterBtn.disabled = false;
+        });
 }
 
 function showRegisterStatus(message, type) {
