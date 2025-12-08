@@ -132,9 +132,8 @@ function convertToChoseong(text) {
             continue;
         }
         
-        // 공백은 유지
+        // 공백은 제거
         if (char === ' ') {
-            result.push(char);
             continue;
         }
         
@@ -211,23 +210,19 @@ function setupEventListeners() {
     
     // 입력값 처리 및 검색 실행 함수
     function handleInput(value) {
-        if (!value) {
-            performSearch('');
-            return;
-        }
-        
-        // 한글 자음과 공백만 허용, 한글 완성형은 초성으로 변환
-        const converted = convertToChoseong(value);
+        // 한글 자음만 허용, 한글 완성형은 초성으로 변환 (공백 제거)
+        const converted = convertToChoseong(value || '');
         
         // 값이 변경되었으면 입력 필드 업데이트
         if (value !== converted) {
             choseongInput.value = converted;
         }
         
-        // 마지막 처리된 값과 다르면 검색 실행
+        // 마지막 처리된 값과 다르면 검색 실행 (즉시 실행, 디바운스는 performSearch 내부에서 처리)
         if (converted !== lastProcessedValue) {
             lastProcessedValue = converted;
             clearTimeout(debounceTimer);
+            // 디바운스 없이 즉시 검색 실행 (첫 입력도 정상 작동하도록)
             debounceTimer = setTimeout(() => {
                 performSearch(converted);
             }, DEBOUNCE_DELAY_MS);
@@ -726,7 +721,10 @@ function updateTagFilter() {
 
 // 검색 수행
 function performSearch(query) {
-    if (!query || !query.trim()) {
+    // 공백 제거
+    const searchQuery = query ? query.replace(/\s/g, '') : '';
+    
+    if (!searchQuery) {
         resultsList.innerHTML = '<p class="empty-message">초성을 입력하면 검색 결과가 표시됩니다</p>';
         resultsCount.textContent = '';
         // 검색이 비어있으면 타이머 리셋
@@ -735,10 +733,9 @@ function performSearch(query) {
             searchTimer = null;
         }
         searchStartTime = null;
+        choseongInput.removeAttribute('data-last-search');
         return;
     }
-    
-    const searchQuery = query.trim();
     
     // 검색어가 변경되었는지 확인
     let lastSearchQuery = choseongInput.getAttribute('data-last-search') || '';
@@ -759,8 +756,8 @@ function performSearch(query) {
     // 1.5초 이상 유지된 검색어만 히스토리에 추가
     // 타이머가 실행될 때 현재 입력값을 다시 확인하여 최신 값 사용
     searchTimer = setTimeout(() => {
-        // 타이머 실행 시점의 현재 입력값 확인 (최신 값 보장)
-        const finalQuery = choseongInput.value.trim();
+        // 타이머 실행 시점의 현재 입력값 확인 (최신 값 보장, 공백 제거)
+        const finalQuery = choseongInput.value ? choseongInput.value.replace(/\s/g, '') : '';
         
         // searchStartTime이 없으면 히스토리에 추가하지 않음
         if (!searchStartTime) {
@@ -1253,7 +1250,8 @@ function autoSetCategory() {
 
 // 정답 등록 제출 (UI만 구현)
 function handleRegisterSubmit() {
-    const name = registerNameInput.value.trim();
+    // 이름에서 모든 공백 제거
+    const name = registerNameInput.value.replace(/\s/g, '');
     const category = registerCategorySelect.value;
     const description = registerDescriptionInput ? registerDescriptionInput.value.trim() : '';
     
@@ -1268,8 +1266,8 @@ function handleRegisterSubmit() {
         return;
     }
     
-    // 한글만 허용 검증
-    const koreanRegex = /^[\uAC00-\uD7A3\s]+$/;
+    // 한글만 허용 검증 (공백 제외)
+    const koreanRegex = /^[\uAC00-\uD7A3]+$/;
     if (!koreanRegex.test(name)) {
         showRegisterStatus('한글만 입력 가능합니다.', 'error');
         return;
