@@ -614,6 +614,12 @@ function performSearch(query) {
     searchTimer = setTimeout(() => {
         // 타이머 실행 시점의 현재 입력값 확인 (최신 값 보장)
         const finalQuery = choseongInput.value.trim();
+        
+        // searchStartTime이 없으면 히스토리에 추가하지 않음
+        if (!searchStartTime) {
+            return;
+        }
+        
         const duration = Date.now() - searchStartTime;
         
         // 최소 1.5초 이상 유지되고, 값이 있고, 마지막으로 저장한 검색어와 같으면 등록
@@ -1016,80 +1022,6 @@ async function submitRegistration(name, category, description) {
             
             document.body.appendChild(iframe);
             
-            // postMessage 리스너
-            const messageHandler = (event) => {
-                console.log('[DEBUG] postMessage 수신:', {
-                    origin: event.origin,
-                    data: event.data,
-                    source: event.source
-                });
-                
-                // 보안: Apps Script 도메인에서 온 메시지만 처리
-                const allowedOrigins = [
-                    'https://script.google.com',
-                    'https://script.googleusercontent.com',
-                    'https://*.googleusercontent.com'
-                ];
-                
-                const isAllowed = allowedOrigins.some(allowed => {
-                    if (allowed.includes('*')) {
-                        const pattern = allowed.replace('*', '.*');
-                        return new RegExp(pattern).test(event.origin);
-                    }
-                    return event.origin === allowed;
-                });
-                
-                if (!isAllowed) {
-                    console.log('[DEBUG] 허용되지 않은 origin:', event.origin);
-                    return;
-                }
-                
-                // 데이터가 객체인지 확인
-                let result;
-                if (typeof event.data === 'string') {
-                    try {
-                        result = JSON.parse(event.data);
-                    } catch (e) {
-                        console.error('[DEBUG] JSON 파싱 실패:', event.data);
-                        return;
-                    }
-                } else if (typeof event.data === 'object' && event.data !== null) {
-                    result = event.data;
-                } else {
-                    console.error('[DEBUG] 예상치 못한 데이터 형식:', typeof event.data, event.data);
-                    return;
-                }
-                
-                console.log('[DEBUG] 파싱된 응답:', result);
-                
-                // iframe과 form 제거 (안전하게)
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                }
-                if (document.body.contains(form)) {
-                    document.body.removeChild(form);
-                }
-                window.removeEventListener('message', messageHandler);
-                
-                if (result.success) {
-                    resolve(result);
-                } else {
-                    reject(new Error(result.message || '등록 실패'));
-                }
-            };
-            
-            // 모든 postMessage 수신 (디버깅용)
-            const debugMessageHandler = (event) => {
-                console.log('[DEBUG] 모든 postMessage:', {
-                    origin: event.origin,
-                    data: event.data,
-                    source: event.source
-                });
-            };
-            
-            window.addEventListener('message', debugMessageHandler);
-            window.addEventListener('message', messageHandler);
-            
             // 폼 생성하여 iframe으로 제출
             const form = document.createElement('form');
             form.method = 'POST';
@@ -1119,34 +1051,108 @@ async function submitRegistration(name, category, description) {
             
             // 타임아웃 설정 (30초)
             const timeoutId = setTimeout(() => {
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
+                // 이벤트 리스너 정리
+                if (messageHandlerRegistered) {
+                    window.removeEventListener('message', messageHandler);
+                    messageHandlerRegistered = false;
                 }
-                if (document.body.contains(form)) {
-                    document.body.removeChild(form);
+                
+                // iframe과 form 제거
+                if (iframe && iframe.parentNode) {
+                    iframe.remove();
                 }
-                window.removeEventListener('message', messageHandler);
+                if (form && form.parentNode) {
+                    form.remove();
+                }
                 reject(new Error('요청 시간 초과'));
             }, 30000);
             
-            // 메시지 핸들러에서 타임아웃 취소
-            const originalMessageHandler = messageHandler;
-            const wrappedMessageHandler = (event) => {
+            // postMessage 리스너 (타임아웃 취소 포함)
+            let messageHandlerRegistered = false;
+            const messageHandler = (event) => {
+                // 디버깅: 모든 postMessage 로그
+                console.log('[DEBUG] postMessage 수신:', {
+                    origin: event.origin,
+                    data: event.data,
+                    source: event.source
+                });
+                
+                // 보안: Apps Script 도메인에서 온 메시지만 처리
+                const allowedOrigins = [
+                    'https://script.google.com',
+                    'https://script.googleusercontent.com',
+                    'https://*.googleusercontent.com'
+                ];
+                
+                const isAllowed = allowedOrigins.some(allowed => {
+                    if (allowed.includes('*')) {
+                        // 와일드카드 패턴을 정규식으로 변환 (점 이스케이프)
+                        const pattern = allowed
+                            .replace(/\./g, '\\.')  // 점을 이스케이프
+                            .replace(/\*/g, '.*');   // 와일드카드를 정규식으로
+                        const regex = new RegExp(`^${pattern}$`);
+                        return regex.test(event.origin);
+                    }
+                    return event.origin === allowed;
+                });
+                
+                if (!isAllowed) {
+                    console.log('[DEBUG] 허용되지 않은 origin:', event.origin);
+                    return;
+                }
+                
+                // 데이터가 객체인지 확인
+                let result;
+                if (typeof event.data === 'string') {
+                    try {
+                        result = JSON.parse(event.data);
+                    } catch (e) {
+                        console.error('[DEBUG] JSON 파싱 실패:', event.data);
+                        return;
+                    }
+                } else if (typeof event.data === 'object' && event.data !== null) {
+                    result = event.data;
+                } else {
+                    console.error('[DEBUG] 예상치 못한 데이터 형식:', typeof event.data, event.data);
+                    return;
+                }
+                
+                console.log('[DEBUG] 파싱된 응답:', result);
+                
+                // 타임아웃 취소
                 clearTimeout(timeoutId);
-                originalMessageHandler(event);
+                
+                // 이벤트 리스너 정리 (중복 제거 방지)
+                if (messageHandlerRegistered) {
+                    window.removeEventListener('message', messageHandler);
+                    messageHandlerRegistered = false;
+                }
+                
+                // iframe과 form 제거 (안전하게)
+                if (iframe && iframe.parentNode) {
+                    iframe.remove();
+                }
+                if (form && form.parentNode) {
+                    form.remove();
+                }
+                
+                if (result.success) {
+                    resolve(result);
+                } else {
+                    reject(new Error(result.message || '등록 실패'));
+                }
             };
             
-            window.removeEventListener('message', messageHandler);
-            window.addEventListener('message', wrappedMessageHandler);
+            // 메시지 핸들러 등록 (한 번만)
+            if (!messageHandlerRegistered) {
+                window.addEventListener('message', messageHandler);
+                messageHandlerRegistered = true;
+            }
             
             form.submit();
             
             // form은 submit 후 즉시 제거하지 않음 (iframe이 로드될 때까지 유지)
-            setTimeout(() => {
-                if (document.body.contains(form)) {
-                    document.body.removeChild(form);
-                }
-            }, 100);
+            // 메시지 핸들러에서 처리되므로 여기서는 제거하지 않음
         } catch (error) {
             reject(error);
         }
