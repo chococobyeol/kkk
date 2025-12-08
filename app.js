@@ -16,6 +16,28 @@ let debounceTimer = null;
 // 성능 설정
 const MAX_RESULTS = 500; // 최대 검색 결과 수
 
+// 타이밍 설정
+const DEBOUNCE_DELAY_MS = 100; // 검색 디바운스 지연 시간 (밀리초)
+const COMPOSITION_END_DELAY_MS = 10; // 한글 입력 완료 후 처리 지연 시간 (밀리초)
+const SEARCH_HISTORY_SAVE_DELAY_MS = 1500; // 검색 히스토리 저장 지연 시간 (밀리초)
+const MODAL_AUTO_CLOSE_DELAY_MS = 5000; // 모달 자동 닫기 지연 시간 (밀리초)
+const NOTIFICATION_DISPLAY_DURATION_MS = 3000; // 알림 표시 지속 시간 (밀리초)
+
+// 검색 히스토리 설정
+const MAX_SEARCH_HISTORY_COUNT = 20; // 최대 검색 히스토리 개수
+const RECENT_QUERIES_CHECK_COUNT = 10; // 중복 확인 시 최근 검색어 개수
+
+// 데이터 새로고침 설정
+const DATA_RELOAD_RETRY_COUNT = 3; // 데이터 새로고침 재시도 횟수
+const DATA_RELOAD_RETRY_DELAY_MS = 1000; // 데이터 새로고침 재시도 지연 시간 (밀리초)
+
+// 입력 검증 설정
+const MAX_NAME_LENGTH = 200; // 이름 최대 길이
+const MAX_DESCRIPTION_LENGTH = 500; // 설명 최대 길이
+
+// 카테고리 자동 설정 설정
+const AUTO_CATEGORY_RECENT_RESULTS_LIMIT = 100; // 카테고리 자동 설정 시 확인할 최근 결과 개수
+
 // 초성 리스트
 const CHOSEONG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
 
@@ -52,6 +74,14 @@ function updateClearButtonVisibility() {
 
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
+    // HTML의 maxlength 속성을 상수로 동적 설정
+    if (registerNameInput) {
+        registerNameInput.maxLength = MAX_NAME_LENGTH;
+    }
+    if (registerDescriptionInput) {
+        registerDescriptionInput.maxLength = MAX_DESCRIPTION_LENGTH;
+    }
+    
     loadHistory();
     loadData();
     setupEventListeners();
@@ -199,7 +229,7 @@ function setupEventListeners() {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 performSearch(converted);
-            }, 100);
+            }, DEBOUNCE_DELAY_MS);
         }
     }
     
@@ -220,7 +250,7 @@ function setupEventListeners() {
         // compositionend 후 약간의 지연 후 처리 (값이 완전히 반영되도록)
         setTimeout(() => {
             handleInput(e.target.value);
-        }, 10);
+        }, COMPOSITION_END_DELAY_MS);
     });
     
     choseongInput.addEventListener('input', (e) => {
@@ -621,17 +651,17 @@ function performSearch(query) {
         
         const duration = Date.now() - searchStartTime;
         
-        // 최소 1.5초 이상 유지되고, 값이 있고, 마지막으로 저장한 검색어와 같으면 등록
-        if (duration >= 1500 && finalQuery && finalQuery === searchQuery) {
-            // 중복 확인 (최근 10개만 확인)
-            const recentQueries = searchHistory.slice(0, 10).map(h => h.query);
+        // 최소 지연 시간 이상 유지되고, 값이 있고, 마지막으로 저장한 검색어와 같으면 등록
+        if (duration >= SEARCH_HISTORY_SAVE_DELAY_MS && finalQuery && finalQuery === searchQuery) {
+            // 중복 확인 (최근 N개만 확인)
+            const recentQueries = searchHistory.slice(0, RECENT_QUERIES_CHECK_COUNT).map(h => h.query);
             if (!recentQueries.includes(finalQuery)) {
                 searchHistory.unshift({
                     query: finalQuery,
                     timestamp: Date.now()
                 });
-                // 최대 20개만 유지
-                if (searchHistory.length > 20) {
+                // 최대 개수만 유지
+                if (searchHistory.length > MAX_SEARCH_HISTORY_COUNT) {
                     searchHistory.pop();
                 }
                 saveHistory();
@@ -640,7 +670,7 @@ function performSearch(query) {
         }
         searchStartTime = null;
         searchTimer = null;
-    }, 1500);
+    }, SEARCH_HISTORY_SAVE_DELAY_MS);
     
     // 검색 수행 - 성능 최적화: 필터링 순서 조정
     let results = database;
@@ -909,7 +939,7 @@ function autoSetCategory() {
     // 우선순위 2: 최근 검색 결과의 카테고리
     if (currentSearch) {
         // 성능 최적화: 검색 결과 제한
-        const recentResults = database.filter(item => item.c.includes(currentSearch)).slice(0, 100);
+        const recentResults = database.filter(item => item.c.includes(currentSearch)).slice(0, AUTO_CATEGORY_RECENT_RESULTS_LIMIT);
         if (recentResults.length > 0) {
             const categoryCounts = {};
             recentResults.forEach(item => {
@@ -965,8 +995,8 @@ function handleRegisterSubmit() {
         return;
     }
     
-    if (name.length > 200) {
-        showRegisterStatus('이름은 최대 200자까지 입력 가능합니다.', 'error');
+    if (name.length > MAX_NAME_LENGTH) {
+        showRegisterStatus(`이름은 최대 ${MAX_NAME_LENGTH}자까지 입력 가능합니다.`, 'error');
         return;
     }
     
@@ -1187,9 +1217,9 @@ async function submitRegistration(name, category, description) {
                 console.log('[DEBUG] 등록 성공, 데이터 새로고침 시작 (등록된 항목:', registeredName, ')');
                 
                 const checkAndLoad = (retryCount = 0) => {
-                    const maxRetries = 3; // 재시도 횟수 감소 (불필요한 재시도 제거)
+                    const maxRetries = DATA_RELOAD_RETRY_COUNT;
                     // SpreadsheetApp.flush()로 즉시 반영되므로 짧은 대기만 필요
-                    const delay = 1000; // 1초 간격으로 재시도
+                    const delay = DATA_RELOAD_RETRY_DELAY_MS;
                     
                     setTimeout(() => {
                         loadData(true).then(() => {  // silent 모드로 재시도 (알림 표시 안 함)
@@ -1231,10 +1261,10 @@ async function submitRegistration(name, category, description) {
                 
                 checkAndLoad();
                 
-                // 5초 후 모달 닫기 (정보를 읽을 시간 제공)
+                // 일정 시간 후 모달 닫기 (정보를 읽을 시간 제공)
                 setTimeout(() => {
                     closeRegisterModal();
-                }, 5000);
+                }, MODAL_AUTO_CLOSE_DELAY_MS);
             } else {
                 // 실패 - 거부 사유 표시
                 let errorMessage = result.message || '등록 신청이 거부되었습니다.';
@@ -1275,6 +1305,6 @@ function showNotification(message, type = 'success') {
     
     setTimeout(() => {
         notification.classList.remove('active');
-    }, 3000);
+    }, NOTIFICATION_DISPLAY_DURATION_MS);
 }
 
