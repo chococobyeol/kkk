@@ -1182,8 +1182,9 @@ async function submitRegistration(name, category, description) {
             console.log('[DEBUG] 등록 성공, 데이터 새로고침 시작 (등록된 항목:', registeredName, ')');
             
             const checkAndLoad = (retryCount = 0) => {
-                const maxRetries = 5;
-                const delay = 2000; // 2초마다 재시도
+                const maxRetries = 3; // 재시도 횟수 감소 (불필요한 재시도 제거)
+                // SpreadsheetApp.flush()로 즉시 반영되므로 짧은 대기만 필요
+                const delay = 1000; // 1초 간격으로 재시도
                 
                 setTimeout(() => {
                     loadData(true).then(() => {  // silent 모드로 재시도 (알림 표시 안 함)
@@ -1207,11 +1208,11 @@ async function submitRegistration(name, category, description) {
                             }
                         } else {
                             if (retryCount < maxRetries) {
-                                console.log('[DEBUG] 등록된 항목을 찾을 수 없음, 재시도:', retryCount + 1, '/', maxRetries);
+                                console.log('[DEBUG] 등록된 항목을 찾을 수 없음, 재시도:', retryCount + 1, '/', maxRetries, '(구글 시트 반영 대기 중...)');
                                 checkAndLoad(retryCount + 1);
                             } else {
                                 console.warn('[DEBUG] 등록된 항목을 찾을 수 없음 (최대 재시도 횟수 초과):', registeredName);
-                                showNotification('등록은 완료되었지만 검색에 반영되지 않았습니다. 페이지를 새로고침해주세요.', 'warning');
+                                showNotification('등록은 완료되었지만 검색에 반영되지 않았습니다. 구글 시트 변경사항 반영에 시간이 걸릴 수 있습니다 (최대 몇 분). 페이지를 새로고침해주세요.', 'warning');
                             }
                         }
                     }).catch(error => {

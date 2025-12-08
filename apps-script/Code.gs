@@ -336,6 +336,9 @@ function addToMainSheet(category, name, tags) {
   const tagsString = tags && tags.length > 0 ? tags.join(',') : '';
   
   sheet.appendRow([category, tagsString, name]);
+  
+  // 즉시 반영을 위해 flush 호출 (캐시 문제 해결)
+  SpreadsheetApp.flush();
 }
 
 /**
@@ -404,8 +407,7 @@ function getCategoryDescription(category) {
     '게임': '게임 아이템, 캐릭터, 무기, 장비 등 게임 관련 항목입니다.',
     '영화': '영화 제목, 영화 속 인물, 영화 관련 용어 등 영화 관련 항목입니다.',
     '인물': '실존 인물, 역사적 인물, 유명인 등 인물 관련 항목입니다.',
-    '식물': '식물 이름, 나무, 꽃, 채소 등 식물 관련 항목입니다.',
-    '동물': '동물 이름, 포유류, 조류, 어류 등 동물 관련 항목입니다.',
+    '생물': '동물, 식물 등 모든 생물 관련 항목입니다. 생물학적 분류(종, 속, 과, 목, 강, 문, 계)를 태그로 포함해주세요.',
     '단어': '일반 단어, 사전에 등재된 단어, 용어 등 단어 관련 항목입니다.',
     '기타': '기타 분류되지 않은 항목입니다.'
   };
@@ -520,7 +522,9 @@ function reviewWithGemini(category, name, description) {
     // "기타" 카테고리인 경우 적절한 카테고리 찾기 요청 추가
     let categoryPrompt = '';
     if (category === '기타') {
-      categoryPrompt = `\n중요: 현재 "기타" 카테고리로 등록하려고 하지만, 기존 카테고리 목록(${existingCategoriesText}) 중에 이 항목에 더 적합한 카테고리가 있다면 그 카테고리를 추천해주세요. 적합한 카테고리가 없으면 "기타"를 유지하세요.`;
+      categoryPrompt = `\n중요: 현재 "기타" 카테고리로 등록하려고 하지만, 기존 카테고리 목록(${existingCategoriesText}) 중에 이 항목에 더 적합한 카테고리가 있다면 그 카테고리를 추천해주세요. 
+- 특히 동물, 식물 등 생물 관련 항목인 경우 반드시 "생물" 카테고리를 추천해주세요
+- 적합한 카테고리가 없으면 "기타"를 유지하세요`;
     }
     
     // 검토 및 태그 추천 프롬프트
@@ -544,6 +548,22 @@ ${description.trim()}
   → 웹 검색 결과 실제로는 바람의나라 아이템이면: 거부 또는 "바람의나라"로 수정`;
     }
     
+    // 생물 카테고리 특별 처리 (기타에서 생물로 변경될 수도 있으므로 항상 포함)
+    let biologyPrompt = '';
+    biologyPrompt = `
+중요: 카테고리가 "생물"로 결정되거나, 동물/식물 등 생물 관련 항목인 경우:
+- 생물학적 분류 태그(종, 속, 과, 목, 강, 문, 계)를 반드시 포함해주세요
+- 일반적인 태그 "동물", "식물", "포유류", "맹수", "야생동물", "멸종위기종" 등은 만들지 마세요
+- 생물학적 분류 태그는 웹 검색을 통해 정확한 정보를 확인하여 추천해주세요
+- 각 분류 단계는 별도의 태그로 구분해주세요
+- 종(種)은 생물학적 종명을 사용하세요 (품종명이나 아종명이 아닙니다)
+- 예: "고양이" → "고양이, 고양이속, 고양이과, 식육목, 포유강, 척삭동물문, 동물계"
+- 예: "치와와" → "늑대, 개속, 개과, 식육목, 포유강, 척삭동물문, 동물계" (치와와는 개의 품종이고, 개는 늑대의 아종이므로 종은 "늑대")
+- 예: "호랑이" → "호랑이, 표범속, 고양이과, 식육목, 포유강, 척삭동물문, 동물계"
+- 예: "사람" → "사람, 사람속, 사람과, 영장목, 포유강, 척삭동물문, 동물계"
+- "기타" 카테고리에서 "생물"로 변경된 경우에도 반드시 생물학적 분류 태그를 사용해주세요
+- 생물학적 분류 태그 7개를 모두 포함할 수 있도록 태그 제한을 고려해주세요`;
+    
     const prompt = `다음 항목이 "${category}" 카테고리의 항목으로 적절한지 검토하고, 적절한 태그를 추천해주세요.
 
 카테고리: ${category}
@@ -551,6 +571,7 @@ ${description.trim()}
 
 ${categoryDescription}
 ${categoryPrompt}
+${biologyPrompt}
 
 현재 사용 중인 태그 목록: ${existingTagsText}
 
@@ -568,12 +589,17 @@ ${categoryPrompt}
 승인 또는 거부 (한 단어로만)
 이유 (한 줄, 웹 검색 결과를 바탕으로 실제 존재 여부를 포함하여 설명)
 적절한 카테고리 (현재 카테고리가 "기타"인 경우에만, 기존 카테고리 목록 중 적합한 것을 추천하거나 "기타" 유지, 없으면 생략)
+- 반드시 "적절한 카테고리:" 또는 "카테고리:" 라는 라벨과 함께 한 줄에 명확하게 표시해주세요
+- 예: "적절한 카테고리: 생물" 또는 "카테고리: 생물"
 추천 태그 (기존 태그 목록에서 적절한 태그만 사용, 쉼표로 구분, 없으면 "없음")
    - 원칙: 기존 태그 목록(${existingTagsText})을 우선 사용하고, 기존 태그로 표현 가능하면 새로운 태그를 만들지 않음
    - 태그 규칙:
-     * 카테고리와 중복 제외, 모순 태그 동시 사용 금지, 핵심 태그만 (최대 5개), 구체적 태그 우선
+     * 카테고리와 중복 제외, 모순 태그 동시 사용 금지, 핵심 태그만 (최대 7개), 구체적 태그 우선
      * 기존 태그로 의미 전달 가능하면 새 태그 추가하지 않음
+     * "생물" 카테고리인 경우 생물학적 분류 태그(종, 속, 과, 목, 강, 문, 계)를 우선 포함
    - 태그는 번호 없이 태그 이름만 쉼표로 구분
+   - 각 태그는 반드시 쉼표(,)로 구분하고, 태그 이름 사이에 공백은 없어야 함
+   - 예: "태그1,태그2,태그3" (올바름) / "태그1, 태그2, 태그3" (가능하지만 공백 없이 권장) / "태그1 태그2" (잘못됨)
 
 예시 (일반):
 승인
@@ -728,19 +754,41 @@ ${categoryPrompt}
       
       // 카테고리를 찾지 못한 경우, 응답 전체에서 기존 카테고리 찾기
       if (recommendedCategory === '기타') {
-        for (let j = 0; j < existingCategories.length; j++) {
-          const existingCat = existingCategories[j];
-          if (responseText.includes(existingCat) && existingCat !== '기타') {
-            // 해당 카테고리가 문맥상 적절한지 확인 (단순 포함이 아닌)
-            const catIndex = responseText.indexOf(existingCat);
-            const beforeText = responseText.substring(Math.max(0, catIndex - 20), catIndex);
-            const afterText = responseText.substring(catIndex, Math.min(responseText.length, catIndex + existingCat.length + 20));
-            
-            // 카테고리가 추천 맥락에서 나온 경우
-            if (beforeText.includes('카테고리') || beforeText.includes('추천') || 
-                afterText.includes('적절') || afterText.includes('추천')) {
-              recommendedCategory = existingCat;
-              break;
+        // "생물" 카테고리를 우선 확인 (동물/식물 관련 항목일 가능성이 높음)
+        if (responseText.includes('생물') && existingCategories.indexOf('생물') >= 0) {
+          // 생물 관련 키워드 확인
+          const biologyKeywords = ['동물', '식물', '생물', '포유', '조류', '어류', '곤충', '과', '속', '종', '목', '강', '문', '계'];
+          const hasBiologyKeyword = biologyKeywords.some(keyword => {
+            const keywordIndex = responseText.toLowerCase().indexOf(keyword.toLowerCase());
+            if (keywordIndex >= 0) {
+              const context = responseText.substring(Math.max(0, keywordIndex - 30), Math.min(responseText.length, keywordIndex + 30));
+              return context.includes('생물') || context.includes('동물') || context.includes('식물');
+            }
+            return false;
+          });
+          
+          if (hasBiologyKeyword) {
+            recommendedCategory = '생물';
+            Logger.log('생물 관련 키워드 발견, 카테고리를 "생물"로 변경');
+          }
+        }
+        
+        // 다른 카테고리도 확인
+        if (recommendedCategory === '기타') {
+          for (let j = 0; j < existingCategories.length; j++) {
+            const existingCat = existingCategories[j];
+            if (responseText.includes(existingCat) && existingCat !== '기타' && existingCat !== '생물') {
+              // 해당 카테고리가 문맥상 적절한지 확인 (단순 포함이 아닌)
+              const catIndex = responseText.indexOf(existingCat);
+              const beforeText = responseText.substring(Math.max(0, catIndex - 20), catIndex);
+              const afterText = responseText.substring(catIndex, Math.min(responseText.length, catIndex + existingCat.length + 20));
+              
+              // 카테고리가 추천 맥락에서 나온 경우
+              if (beforeText.includes('카테고리') || beforeText.includes('추천') || 
+                  afterText.includes('적절') || afterText.includes('추천')) {
+                recommendedCategory = existingCat;
+                break;
+              }
             }
           }
         }
@@ -849,11 +897,18 @@ ${categoryPrompt}
             const tagsInLine = line.split(/[,，]/).map(function(tag) {
               // 번호와 점 제거 (예: "4. 바람의나라" -> "바람의나라")
               tag = tag.trim().replace(/^\d+\.\s*/, '').trim();
+              // 앞뒤 공백 및 특수문자 제거
+              tag = tag.replace(/^[\s\-_]+|[\s\-_]+$/g, '').trim();
               return tag;
             }).filter(function(tag) {
-              return tag && tag !== '없음' && tag.length > 0 && tag.length < 50; // 태그는 50자 이하
+              // 태그 유효성 검사: 빈 문자열, "없음", 너무 긴 태그 제외
+              return tag && tag !== '없음' && tag.length > 0 && tag.length < 50;
             });
-            if (tagsInLine.length > 0 && tagsInLine.length <= 15) { // 최대 15개 태그
+            // 생물 카테고리는 최대 7개, 그 외는 최대 15개
+            // recommendedCategory가 이미 추출되었는지 확인
+            const finalCategoryForTags = (category === '기타' && recommendedCategory && recommendedCategory !== '기타') ? recommendedCategory : category;
+            const maxTags = (finalCategoryForTags === '생물' || recommendedCategory === '생물') ? 7 : 15;
+            if (tagsInLine.length > 0 && tagsInLine.length <= maxTags) {
               recommendedTags = tagsInLine;
               break;
             }
@@ -1060,6 +1115,9 @@ function syncTagsToSheet(tags, category) {
       existingTags.push(tag.toLowerCase());
     }
   }
+  
+  // 즉시 반영을 위해 flush 호출 (캐시 문제 해결)
+  SpreadsheetApp.flush();
 }
 
 /**
@@ -1085,6 +1143,7 @@ function syncCategoryToSheet(category) {
   
   // 새로운 카테고리 추가
   sheet.appendRow([category]);
+  SpreadsheetApp.flush();
 }
 
 /**
