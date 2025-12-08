@@ -510,25 +510,93 @@ function updateTagFilter() {
     // 태그 필터 표시
     tagFilterContainer.style.display = 'block';
     
+    // 태그 헤더 영역
+    const tagHeader = document.createElement('div');
+    tagHeader.style.display = 'flex';
+    tagHeader.style.alignItems = 'center';
+    tagHeader.style.justifyContent = 'space-between';
+    tagHeader.style.marginBottom = '8px';
+    
     const tagLabel = document.createElement('label');
     tagLabel.textContent = '태그:';
     tagLabel.style.fontSize = '15px';
     tagLabel.style.fontWeight = '500';
-    tagLabel.style.marginRight = '12px';
     tagLabel.style.color = '#212529';
-    tagFilterContainer.appendChild(tagLabel);
+    tagHeader.appendChild(tagLabel);
+    
+    // 태그를 개수 순으로 정렬 (많은 순)
+    const sortedTags = Array.from(availableTags).sort((a, b) => {
+        return (tagCounts[b] || 0) - (tagCounts[a] || 0);
+    });
+    
+    // 접기/펼치기 기능 (태그가 10개 이상일 때만)
+    const TAG_DISPLAY_LIMIT = 10;
+    const shouldShowToggle = sortedTags.length > TAG_DISPLAY_LIMIT;
+    let isExpanded = false;
+    
+    // 접기/펼치기 버튼 (텍스트 형태)
+    let toggleButton = null;
+    if (shouldShowToggle) {
+        toggleButton = document.createElement('button');
+        toggleButton.className = 'tag-toggle-btn';
+        toggleButton.style.cssText = `
+            padding: 0;
+            font-size: 15px;
+            font-weight: 500;
+            color: #555;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            font-family: 'Noto Sans KR', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        `;
+        
+        // SVG 화살표 아이콘 (아래)
+        const arrowDownSvg = `
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        `;
+        
+        // SVG 화살표 아이콘 (위)
+        const arrowUpSvg = `
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                <path d="M2 8L6 4L10 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        `;
+        
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `더 보기 (${sortedTags.length - TAG_DISPLAY_LIMIT})`;
+        
+        const iconSpan = document.createElement('span');
+        iconSpan.innerHTML = arrowDownSvg;
+        iconSpan.setAttribute('data-arrow-type', 'down');
+        
+        toggleButton.appendChild(textSpan);
+        toggleButton.appendChild(iconSpan);
+        
+        toggleButton.addEventListener('mouseenter', () => {
+            toggleButton.style.color = '#333';
+        });
+        
+        toggleButton.addEventListener('mouseleave', () => {
+            toggleButton.style.color = '#555';
+        });
+        
+        tagHeader.appendChild(toggleButton);
+    }
+    
+    tagFilterContainer.appendChild(tagHeader);
     
     const tagList = document.createElement('div');
     tagList.className = 'tag-list';
     tagList.style.display = 'flex';
     tagList.style.flexWrap = 'wrap';
     tagList.style.gap = '8px';
-    tagList.style.marginTop = '8px';
-    
-    // 태그를 개수 순으로 정렬 (많은 순)
-    const sortedTags = Array.from(availableTags).sort((a, b) => {
-        return (tagCounts[b] || 0) - (tagCounts[a] || 0);
-    });
+    tagList.style.marginTop = '0';
     
     // "전체" 옵션 추가
     const allTagCheckbox = document.createElement('input');
@@ -563,7 +631,7 @@ function updateTagFilter() {
     tagList.appendChild(allTagWrapper);
     
     // 각 태그 체크박스 생성
-    sortedTags.forEach(tag => {
+    sortedTags.forEach((tag, index) => {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.id = `tag-${tag}`;
@@ -602,7 +670,56 @@ function updateTagFilter() {
         wrapper.appendChild(checkbox);
         wrapper.appendChild(label);
         tagList.appendChild(wrapper);
+        
+        // 처음 N개만 표시, 나머지는 숨김 (옆으로 나열되지만 일부만 보임)
+        if (shouldShowToggle && index >= TAG_DISPLAY_LIMIT) {
+            wrapper.style.display = 'none';
+        }
     });
+    
+    // 접기/펼치기 버튼 이벤트
+    if (toggleButton) {
+        toggleButton.addEventListener('click', () => {
+            isExpanded = !isExpanded;
+            const allWrappers = tagList.querySelectorAll('div:not(:first-child)'); // "전체" 제외한 모든 태그
+            
+            if (isExpanded) {
+                // 펼치기: 모든 태그 표시
+                allWrappers.forEach((wrapper, index) => {
+                    if (index >= TAG_DISPLAY_LIMIT - 1) {
+                        wrapper.style.display = 'flex';
+                    }
+                });
+                // 텍스트와 아이콘 변경
+                const textSpan = toggleButton.querySelector('span:first-child');
+                const iconSpan = toggleButton.querySelector('span:last-child');
+                textSpan.textContent = '접기';
+                iconSpan.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                        <path d="M2 8L6 4L10 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                `;
+                iconSpan.setAttribute('data-arrow-type', 'up');
+            } else {
+                // 접기: 처음 N개만 표시
+                allWrappers.forEach((wrapper, index) => {
+                    if (index >= TAG_DISPLAY_LIMIT - 1) {
+                        wrapper.style.display = 'none';
+                    }
+                });
+                // 텍스트와 아이콘 변경
+                const textSpan = toggleButton.querySelector('span:first-child');
+                const iconSpan = toggleButton.querySelector('span:last-child');
+                textSpan.textContent = `더 보기 (${sortedTags.length - TAG_DISPLAY_LIMIT})`;
+                iconSpan.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                `;
+                iconSpan.setAttribute('data-arrow-type', 'down');
+            }
+        });
+    }
     
     tagFilterContainer.appendChild(tagList);
 }
