@@ -594,8 +594,8 @@
 - CSV 형식으로 내보내기 링크 사용
 - 기본 구글 시트 URL: `https://docs.google.com/spreadsheets/d/e/2PACX-1vTNgKTsKcqDr4etDeuMtzfJqlFDfsDuCTRA3AgGdUtaIimSGV6Jc-kUO2zEEUf3MJbfic_21tnjo3oz/pub?output=csv`
 - **시트 구조**:
-  - A열: 카테고리 (게임, 영화, 인물, 식물, 동물 등)
-  - B열: 태그 (게임명, 영화 장르, 동물 종류 등) - 쉼표로 구분하여 다중 태그 가능, 선택사항
+  - A열: 카테고리 (게임, 영화, 인물, 생물, 음악 등)
+  - B열: 태그 (게임명, 영화 장르, 등) - 쉼표로 구분하여 다중 태그 가능, 선택사항
   - C열: 이름
 - **태그 입력 방법**: 쉼표로 구분 (예: "게임명,장르")
 - **하위 호환성**: 태그가 없는 데이터도 정상 작동
