@@ -1230,22 +1230,9 @@ function autoSetCategory() {
         }
     }
     
-    // 우선순위 3: 가장 빈번한 카테고리
-    const categoryCounts = {};
-    database.forEach(item => {
-        categoryCounts[item.t] = (categoryCounts[item.t] || 0) + 1;
-    });
-    if (Object.keys(categoryCounts).length > 0) {
-        const mostCommonCategory = Object.keys(categoryCounts).reduce((a, b) => 
-            categoryCounts[a] > categoryCounts[b] ? a : b
-        );
-        registerCategorySelect.value = mostCommonCategory;
-    } else {
-        // 카테고리가 없으면 "기타"로 설정
-        if (registerCategorySelect.querySelector('option[value="기타"]')) {
-            registerCategorySelect.value = '기타';
-        }
-    }
+    // 검색어가 없거나 검색 결과가 없으면 자동 설정하지 않음 (사용자가 직접 선택)
+    // 기본값은 빈 값으로 유지
+    registerCategorySelect.value = '';
 }
 
 // 정답 등록 제출 (UI만 구현)
