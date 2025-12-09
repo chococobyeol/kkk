@@ -1176,13 +1176,19 @@ function openRegisterModal() {
         registerCategorySelect.appendChild(option);
     });
     
-    // 카테고리 자동 설정
-    autoSetCategory();
-    
     // 카테고리가 없으면 "기타"로 설정하고 안내 메시지 표시
     if (categories.size === 0) {
         registerCategorySelect.value = '기타';
         showRegisterStatus('카테고리가 없습니다. "기타"로 선택되었습니다. Gemini AI가 적절한 카테고리로 자동 분류합니다.', 'info');
+    } else {
+        // 검색어가 있을 때만 카테고리 자동 설정
+        const currentSearch = choseongInput.value.trim();
+        if (currentSearch) {
+            autoSetCategory();
+        } else {
+            // 검색어가 없으면 빈 값으로 유지 (사용자가 직접 선택)
+            registerCategorySelect.value = '';
+        }
     }
     
     // 입력 필드 초기화
