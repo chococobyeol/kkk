@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /apps-script/
+
+Sitemap: https://kkk-choseong.onrender.com/sitemap.xml
+
